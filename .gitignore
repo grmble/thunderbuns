@@ -1,0 +1,9 @@
+*.o
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.swp
+*.x
+.DS_Store
+.hsenv*
+.stack-work/
