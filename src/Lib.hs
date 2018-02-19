@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators   #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Lib
     ( startApp
     , app
@@ -8,9 +9,12 @@ module Lib
 
 import Data.Aeson
 import Data.Aeson.TH
+import Data.Monoid ((<>))
+import qualified Data.Text as T
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
+import Thunderbuns.Logging
 
 data User = User
   { userId        :: Int
@@ -22,8 +26,10 @@ $(deriveJSON defaultOptions ''User)
 
 type API = "users" :> Get '[JSON] [User]
 
-startApp :: IO ()
-startApp = run 8080 app
+startApp :: Int -> Logger -> IO ()
+startApp port lg = do
+  debugM ("Starting to serve on port " <> T.pack (show port)) lg
+  run port app
 
 app :: Application
 app = serve api server

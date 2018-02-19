@@ -4,6 +4,8 @@
 *.sqlite3-wal
 *.swp
 *.x
+*~
 .DS_Store
 .hsenv*
 .stack-work/
+/config

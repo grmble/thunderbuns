@@ -15,7 +15,11 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-9.21
+#
+# lts ghc 8.0.2: lts-9.21
+# lts ghc 8.2.2: lts-10.5
+#   but that one does not have dhall - so we use the nightly (ghc 8.2.2)
+resolver: nightly-2018-02-18
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
