@@ -42,6 +42,7 @@ import Network.BSD (getHostName)
 import System.Environment (lookupEnv)
 import System.IO (stdout, hFlush)
 import Text.Show.Functions
+import Thunderbuns.Process (Pid, getPid)
 
 data Priority
   = FATAL
@@ -96,7 +97,7 @@ consoleHandler (LogRecord obj) = do
 rootLogger :: T.Text -> (LogRecord -> IO ()) -> IO Logger
 rootLogger n h = do
   hn <- getHostName
-  pid <- lookupEnv "$$"
+  pid <- getPid
   return
     Logger
       { name = n
@@ -106,7 +107,7 @@ rootLogger n h = do
           M.fromList
             [ ("v", A.Number 0)
             , ("hostname", A.String (T.pack hn))
-            , ("pid", A.Number $ maybe 0 read pid)
+            , ("pid", A.Number $ fromIntegral pid)
             ]
       }
 

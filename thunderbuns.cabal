@@ -29,6 +29,7 @@ library
                      , servant-server
                      , text
                      , time
+                     , tprocess
                      , unordered-containers
                      , wai
                      , warp
