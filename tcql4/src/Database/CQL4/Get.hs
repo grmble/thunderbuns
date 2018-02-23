@@ -1,30 +1,31 @@
-module Thunderbuns.CQL4.Get where
+module Database.CQL4.Get where
 
 import Control.Monad (replicateM)
-import Data.Bits (shift)
 import qualified Data.ByteString as B
+import qualified Data.HashMap.Strict as M
 import Data.Int (Int16, Int32, Int64)
 import Data.Monoid ((<>))
-import Data.Word (Word16)
-import qualified Data.HashMap.Strict as M
-import qualified Data.HashSet as S
 import qualified Data.Scientific as Scientific
 import qualified Data.Serialize.Get as G
 import Data.Serialize.IEEE754 (getFloat32be, getFloat64be)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Time.Calendar (Day, addDays, fromGregorian)
-import Data.Time.Clock (DiffTime, UTCTime(..), addUTCTime, picosecondsToDiffTime)
+import Data.Time.Clock
+  ( DiffTime
+  , UTCTime(..)
+  , addUTCTime
+  , picosecondsToDiffTime
+  )
 import qualified Data.Vector as V
-import Data.Word (Word32)
-
+import Data.Word (Word16, Word32)
+import qualified Database.CQL4.Varint.Get as VG
 
 --
 --
 -- helpers
 --
 --
-
 _intLen :: G.Get Int
 _intLen = fromIntegral <$> int
 
@@ -45,21 +46,21 @@ _epochTimestamp = UTCTime _epochDate 0
 
 -- | a blob of n bytes
 _blob :: Int -> G.Get B.ByteString
-_blob n =
-  G.getBytes n
+_blob = G.getBytes
 
 _maybe :: (Int -> G.Get a) -> Int -> G.Get (Maybe a)
 _maybe g n =
   if n < 0
-  then pure Nothing
-  else Just <$> g n
+    then pure Nothing
+    else Just <$> g n
 
 _value :: (Int -> G.Get a) -> Int -> G.Get (Value a)
 _value g n =
   case n of
     -1 -> pure NullValue
     -2 -> pure NotSet
-    x | x >= 0 -> Value <$> g x
+    x
+      | x >= 0 -> Value <$> g x
     _ -> fail ("illegal len for value: " <> show n)
 
 -- | utf8 decode the bytestring or fail
@@ -71,50 +72,39 @@ _utf8 bs =
 
 -- | a utf-8 encoded string of n bytes
 _string :: Int -> G.Get T.Text
-_string n =
-  _blob n >>= _utf8
-
+_string n = _blob n >>= _utf8
 
 --
 --
 --  primitives from the cassandra protocol spec
 --
 --
-
-
-
-
 -- | a 4-byte two's complement integer
 int :: G.Get Int32
 int = G.getInt32be
 
 -- | an eight-byte two's complement integer
 long :: G.Get Int64
-long =
-  G.getInt64be
+long = G.getInt64be
 
 -- | a 2 byte unsigned integer
 short :: G.Get Word16
-short =
-  G.getWord16be
+short = G.getWord16be
 
 -- | a 2 byte two's complement integer
 signedShort :: G.Get Int16
-signedShort =
-  G.getInt16be
+signedShort = G.getInt16be
 
 -- | a short n, followed by n bytes representing an UTF-8 string
 string :: G.Get T.Text
-string =
-  _shortLen >>= _string
-  
+string = _shortLen >>= _string
+
 -- | an int n, followed by n bytes representing an utf-8 string
 longString :: G.Get T.Text
-longString =
-  _intLen >>= _string
+longString = _intLen >>= _string
 
-
-newtype UUID = UUID B.ByteString
+newtype UUID =
+  UUID B.ByteString
 
 -- | a 16 bytes long uuid
 uuid :: G.Get UUID
@@ -123,16 +113,14 @@ uuid = UUID <$> _blob 16
 -- | a list of n elements
 --
 -- it is called list in the cassandra protocoll definitions
-list :: G.Get a ->  G.Get (V.Vector a)
+list :: G.Get a -> G.Get (V.Vector a)
 list g = do
   len <- _shortLen
   V.replicateM len g
 
 -- | an int n, followed by n bytes if n >= 0
 bytes :: G.Get (Maybe B.ByteString)
-bytes =
-  _intLen >>= _maybe _blob
-
+bytes = _intLen >>= _maybe _blob
 
 data Value a
   = Value a
@@ -141,23 +129,19 @@ data Value a
 
 -- | an int n, followed by n bytes if n >= 0.  -1 null, -2 not set
 value :: G.Get (Value B.ByteString)
-value =
-  _intLen >>= _value _blob
+value = _intLen >>= _value _blob
 
 -- | a short n, followed by n bytes if n >= 0
 --
 -- XXX: duh? short is defined as unsigned?  I assume here it is signed
 shortBytes :: G.Get (Maybe B.ByteString)
-shortBytes =
-  _signedShortLen >>= _maybe _blob
+shortBytes = _signedShortLen >>= _maybe _blob
 
 -- | a paird of <id><value> where id is a short
 option :: G.Get (Word16, Value B.ByteString)
-option =
-  (,) <$> short <*> value
+option = (,) <$> short <*> value
 
 -- option list is just list option
-
 -- | a short n followed by n key/value pairs. key is always string.
 --
 -- * string map: map string
@@ -168,13 +152,11 @@ map g = do
   n <- _shortLen
   M.fromList <$> replicateM n ((,) <$> string <*> g)
 
-  
 -- | a single byte, 0 denotes false, everything else is true
 boolean :: G.Get Bool
 boolean = do
   b <- G.getWord8
   pure $ b == 0
-
 
 -- | an unsigned integer representing days with epoch centered at 2^31
 date :: G.Get Day
@@ -187,7 +169,7 @@ decimal :: G.Get Scientific.Scientific
 decimal = do
   scale <- int
   unscaled <- varint
-  pure $ Scientific.scientific unscaled (fromIntegral $ -scale)
+  pure $ Scientific.scientific (fromIntegral unscaled) (fromIntegral $ -scale)
 
 -- a 8-byte floating point number in the ieee 754 format
 double :: G.Get Double
@@ -216,8 +198,7 @@ ipAddress = do
 
 -- | an ip address followed by an int port
 inet :: G.Get (IPAddress, Int32)
-inet =
-  (,) <$> ipAddress <*> int
+inet = (,) <$> ipAddress <*> int
 
 data Consistency
   = Any
@@ -235,10 +216,7 @@ data Consistency
 
 -- | a short giving the consistency
 consistency :: G.Get Consistency
-consistency =
-  toEnum <$> _shortLen
-  
-
+consistency = toEnum <$> _shortLen
 
 -- | an 8 byte two's complement long representing nanoseconds since midnight
 time :: G.Get DiffTime
@@ -257,17 +235,5 @@ timestamp = do
 -- protocol document is useless on this, see
 -- https://github.com/datastax/java-driver/blob/57724bd63c3038e3728260c7640abcea06f33b86/driver-core/src/main/java/com/datastax/driver/core/VIntCoding.java
 --
-varint :: G.Get Integer
-varint = 
-  go 0 0
-
-  where
-    go !n !acc = do
-      b <- G.getWord8
-      case b of
-        0xFF ->
-          -- it's negative, eg 80 -> FF80
-        x | x <= 0x7F -> pure $ acc `shift` (8*n)
-        x -> go (n + 1) (acc `shift` (8*n))
-        
-
+varint :: G.Get Int64
+varint = VG.varint

@@ -21,6 +21,7 @@ description:         Please see the README on Github at <https://github.com/grmb
 # base 4.10 is stack lts 10 aka GHC 8.2.2
 dependencies:
 - base >= 4.10 && < 5
+- array
 - bytestring
 - cereal
 - scientific

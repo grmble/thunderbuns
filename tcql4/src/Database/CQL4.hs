@@ -1,2 +1,2 @@
-module Thunderbuns.CQL4 where
+module Database.CQL4 where
 
