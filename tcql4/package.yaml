@@ -24,11 +24,11 @@ dependencies:
 - array
 - bytestring
 - cereal
+- network
 - scientific
 - text
 - time
 - unordered-containers
-- vector
 # intero needs these here ...
 - hspec
 - QuickCheck

@@ -2,14 +2,18 @@ module Database.CQL4.Varint.Put where
 
 import Control.Monad.ST
 import Data.Bits
+import Data.Int
 import qualified Data.Serialize.Put as P
 import Data.Foldable
 import Data.Array.Unboxed
 import Data.Array.ST
 import Data.Array.Unsafe
 import Data.Word
-import Database.CQL4.Varint.Get
+import Database.CQL4.Varint.Get (encodeZigZag64, firstByteValueMask)
 
+varint :: Int64 -> P.Put
+varint i = do
+  unsignedVarint $ encodeZigZag64 i
 
 unsignedVarint :: Word64 -> P.Put
 unsignedVarint w = do

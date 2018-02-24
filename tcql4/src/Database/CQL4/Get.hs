@@ -1,6 +1,7 @@
 module Database.CQL4.Get where
 
 import Control.Monad (replicateM)
+import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.HashMap.Strict as M
 import Data.Int (Int16, Int32, Int64)
@@ -17,9 +18,39 @@ import Data.Time.Clock
   , addUTCTime
   , picosecondsToDiffTime
   )
-import qualified Data.Vector as V
 import Data.Word (Word16, Word32)
 import qualified Database.CQL4.Varint.Get as VG
+import Database.CQL4.Types
+import Data.Traversable
+
+
+frameHeader :: G.Get FrameHeader
+frameHeader = do
+  v' <- G.getWord8
+  v <- case v' of
+    0x4 -> pure RequestFrame
+    0x84 -> pure ResponseFrame
+    _ -> fail "frameVersion not 0x04/0x84"
+
+  f' <- G.getWord8
+  let fs = foldr (foldFlags f') [] (fromEnum <$> [FlagCompress .. ])
+
+  s' <- G.getInt32be
+  c' <- G.getWord8
+  l' <- G.getInt32be
+
+  pure FrameHeader { frameVersion = v
+                   , frameFlags = fs
+                   , frameStream = s'
+                   , frameOpCode = (toEnum $ fromIntegral c')
+                   , frameLength = l'}
+
+  where
+    foldFlags f' e acc =
+      if testBit f' e then (toEnum e) : acc else acc
+
+
+
 
 --
 --
@@ -113,10 +144,10 @@ uuid = UUID <$> _blob 16
 -- | a list of n elements
 --
 -- it is called list in the cassandra protocoll definitions
-list :: G.Get a -> G.Get (V.Vector a)
+list :: G.Get a -> G.Get [a]
 list g = do
   len <- _shortLen
-  V.replicateM len g
+  replicateM len g
 
 -- | an int n, followed by n bytes if n >= 0
 bytes :: G.Get (Maybe B.ByteString)
@@ -231,9 +262,5 @@ timestamp = do
   pure $ addUTCTime (realToFrac ms / 1000) _epochTimestamp
 
 -- | variable length two's complement encoding of signed integer
---
--- protocol document is useless on this, see
--- https://github.com/datastax/java-driver/blob/57724bd63c3038e3728260c7640abcea06f33b86/driver-core/src/main/java/com/datastax/driver/core/VIntCoding.java
---
 varint :: G.Get Int64
 varint = VG.varint
