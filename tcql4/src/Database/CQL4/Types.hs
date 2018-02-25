@@ -8,7 +8,10 @@ No rearranging ...
 module Database.CQL4.Types where
 
 import Data.Int
+import qualified Data.ByteString as B
 import qualified Data.Text as T
+import qualified Data.HashMap.Strict as M
+import Data.Time.Clock (UTCTime)
 
 -- | The frame header is transmitted before the data of the frame
 data FrameHeader = FrameHeader
@@ -62,6 +65,73 @@ data OpCode
   | OpAuthSuccess
   deriving (Show, Eq, Enum)
 
+
+-- | Cassandra consistency level
+data Consistency
+  = Any
+  | One
+  | Two
+  | Three
+  | Quorum
+  | All
+  | LocalQuorum
+  | EachQuorum
+  | Serial
+  | LocalSerial
+  | LocalOne
+  deriving (Show, Eq, Enum)
+
+
+-- | A value can have a value, it can be null or unset.
+data Value a
+  = Value a
+  | NullValue
+  | NotSet
+  deriving (Show, Eq)
+
+
+-- | A CQL query
+--
+-- Note that this does not have query flags - the query flags
+-- are determined by the type of the query (and the parameters
+-- that are present)
+data Query
+  = UnboundQuery -- ^ a query without bound variables
+  { query :: T.Text
+  , consistency :: Consistency
+  , skipMetadata :: Bool
+  , pageSize :: Maybe Int32
+  , pagingState :: Maybe B.ByteString
+  , serialConsistency :: Maybe Consistency
+  , defaultTimestamp :: Maybe UTCTime
+  }
+  {--
+  | Query -- ^ a query with variables bound by position
+  { query :: T.Text
+  , values :: [Value B.ByteString]
+  , consistency :: Consistency
+  , pageSize :: Maybe Int32
+  , pagingState :: Maybe B.ByteString
+  , serialConsistency :: Maybe Consistency
+  , defaultTimestamp :: Maybe UTCTime
+  }
+  --}
+  deriving (Show, Eq)
+
+-- | Query flags
+--
+-- Note that for this enum the enum value is the bit position,
+-- the flag is 2^enum 
+data QueryFlags
+  = QFValues
+  | QFSkipMetadata
+  | QFPageSize
+  | QFPagingState
+  | QFSerialConsistency
+  | QFDefaultTimestamp
+  | QFNamedValues
+  deriving (Show, Eq, Enum)
+
 -- | Messages that can be received from the server
 --
 -- Only messages that can be received by the client are relevant here
@@ -69,4 +139,5 @@ data Message
   = ErrorMsg { errorCode :: Int32, errorMsg :: T.Text, errorParams :: [(T.Text, T.Text)] }
   | ReadyMsg
   | AuthenticateMsg T.Text
+  | SupportedMsg (M.HashMap T.Text [T.Text])
   deriving (Show, Eq)

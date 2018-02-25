@@ -16,9 +16,15 @@ import System.Environment
 main :: IO ()
 main = do
   hn <- head <$> getArgs
-  runTCPClient (clientSettings 9042 $ fromString hn) $ \app -> do
-    putStrLn ("running request sink" :: [Char])
+  runTCPClient (clientSettings 9042 $ fromString hn) $ \app
+    -- putStrLn ("options command" :: [Char])
+    -- runConduit $ command app options
+   -> do
+    putStrLn ("startup command" :: [Char])
     runConduit $ command app startup
+    putStrLn ("execute query command" :: [Char])
+    runConduit $
+      command app (executeQuery $ unboundQuery Quorum "select * from blubb")
     putStrLn ("running message source" :: [Char])
     runConduit $ messageSource app .| CC.mapM_ print
     putStrLn ("BLUBB" :: [Char])

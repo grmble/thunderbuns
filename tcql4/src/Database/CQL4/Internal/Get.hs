@@ -153,11 +153,6 @@ list g = do
 bytes :: G.Get (Maybe B.ByteString)
 bytes = _intLen >>= _maybe _blob
 
-data Value a
-  = Value a
-  | NullValue
-  | NotSet
-
 -- | an int n, followed by n bytes if n >= 0.  -1 null, -2 not set
 value :: G.Get (Value B.ByteString)
 value = _intLen >>= _value _blob
@@ -228,20 +223,6 @@ ipAddress = do
 -- | an ip address followed by an int port
 inet :: G.Get (IPAddress, Int32)
 inet = (,) <$> ipAddress <*> int
-
-data Consistency
-  = Any
-  | One
-  | Two
-  | Three
-  | Quorum
-  | All
-  | LocalQuorum
-  | EachQuorum
-  | Serial
-  | LocalSerial
-  | LocalOne
-  deriving (Show, Eq, Enum)
 
 -- | a short giving the consistency
 consistency :: G.Get Consistency
