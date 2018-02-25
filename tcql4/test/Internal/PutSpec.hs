@@ -1,7 +1,7 @@
-module PutSpec where
+module Internal.PutSpec where
 
 import qualified Data.Serialize.Put as P
-import Database.CQL4.Put
+import Database.CQL4.Internal.Put
 import Database.CQL4.Types
 import Test.Hspec
 

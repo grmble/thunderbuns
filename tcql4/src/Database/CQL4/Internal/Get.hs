@@ -1,4 +1,4 @@
-module Database.CQL4.Get where
+module Database.CQL4.Internal.Get where
 
 import Control.Monad (replicateM)
 import Data.Bits
@@ -19,7 +19,7 @@ import Data.Time.Clock
   , picosecondsToDiffTime
   )
 import Data.Word (Word16, Word32)
-import qualified Database.CQL4.Varint.Get as VG
+import qualified Database.CQL4.Internal.GetVarint as GV
 import Database.CQL4.Types
 import Data.Traversable
 
@@ -261,4 +261,4 @@ timestamp = do
 
 -- | variable length two's complement encoding of signed integer
 varint :: G.Get Int64
-varint = VG.varint
+varint = GV.varint

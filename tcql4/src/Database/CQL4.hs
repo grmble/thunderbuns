@@ -4,8 +4,8 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
 import qualified Data.Text as T
-import qualified Database.CQL4.Get as CG
-import qualified Database.CQL4.Put as CP
+import qualified Database.CQL4.Internal.Get as CG
+import qualified Database.CQL4.Internal.Put as CP
 import Database.CQL4.Types
 
 -- | Put the startup message

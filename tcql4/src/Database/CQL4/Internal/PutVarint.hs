@@ -1,4 +1,4 @@
-module Database.CQL4.Varint.Put where
+module Database.CQL4.Internal.PutVarint where
 
 import Control.Monad.ST
 import Data.Bits
@@ -9,7 +9,7 @@ import Data.Array.Unboxed
 import Data.Array.ST
 import Data.Array.Unsafe
 import Data.Word
-import Database.CQL4.Varint.Get (encodeZigZag64, firstByteValueMask)
+import Database.CQL4.Internal.GetVarint (encodeZigZag64, firstByteValueMask)
 
 varint :: Int64 -> P.Put
 varint i = do

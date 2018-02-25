@@ -1,4 +1,4 @@
-module Database.CQL4.Put where
+module Database.CQL4.Internal.Put where
 
 import Data.Serialize.Put as P
 import Database.CQL4.Types

@@ -1,8 +1,8 @@
-module Varint.GetSpec where
+module Internal.GetVarintSpec where
 
 import Data.Int
 import Data.Serialize.Get
-import Database.CQL4.Varint.Get
+import Database.CQL4.Internal.GetVarint
 import Test.Hspec
 import Test.QuickCheck
 

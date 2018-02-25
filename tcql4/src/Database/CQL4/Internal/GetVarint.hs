@@ -1,4 +1,4 @@
-module Database.CQL4.Varint.Get where
+module Database.CQL4.Internal.GetVarint where
 
 import Data.Int
 import Data.Bits

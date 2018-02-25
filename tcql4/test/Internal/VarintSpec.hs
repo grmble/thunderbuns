@@ -1,11 +1,11 @@
-module VarintSpec where
+module Internal.VarintSpec where
 
 import Data.Int
 import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
 import Data.Word
-import qualified Database.CQL4.Varint.Get as GV
-import qualified Database.CQL4.Varint.Put as PV
+import qualified Database.CQL4.Internal.GetVarint as GV
+import qualified Database.CQL4.Internal.PutVarint as PV
 import Test.Hspec
 import Test.QuickCheck
 

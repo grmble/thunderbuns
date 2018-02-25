@@ -1,9 +1,9 @@
-module PutGetSpec where
+module Internal.PutGetSpec where
 
 import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
-import qualified Database.CQL4.Get as CG
-import qualified Database.CQL4.Put as CP
+import qualified Database.CQL4.Internal.Get as CG
+import qualified Database.CQL4.Internal.Put as CP
 import Data.Text
 import Data.String
 import Database.CQL4.Types

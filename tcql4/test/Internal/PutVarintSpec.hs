@@ -1,7 +1,7 @@
-module Varint.PutSpec where
+module Internal.PutVarintSpec where
 
 import Data.Serialize.Put
-import Database.CQL4.Varint.Put
+import Database.CQL4.Internal.PutVarint
 import Test.Hspec
 
 main :: IO ()

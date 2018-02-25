@@ -1,7 +1,7 @@
-module GetSpec where
+module Internal.GetSpec where
 
 import qualified Data.Serialize.Get as G
-import Database.CQL4.Get
+import Database.CQL4.Internal.Get
 import Database.CQL4.Types
 import Test.Hspec
 
