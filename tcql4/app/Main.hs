@@ -1,22 +1,35 @@
 module Main where
 
-import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import Network.Socket.ByteString
+import qualified Data.ByteString as B
+import Data.Conduit
+import Data.Conduit.Cereal
+import qualified Data.Conduit.Combinators as CC
+import Data.Conduit.Network
+import Data.Monoid
+import qualified Data.Serialize.Put as P
+import Data.String (fromString)
+import Data.Void
+import Database.CQL4
+import Database.CQL4.Types
 import System.Environment
 
 main :: IO ()
 main = do
   hn <- head <$> getArgs
-  sock <- clientSocket hn 9042
-  print "Connected."
+  runTCPClient (clientSettings 9042 $ fromString hn) $ \app -> do
+    putStrLn ("running request sink" :: [Char])
+    runConduit $ command app startup
+    putStrLn ("running message source" :: [Char])
+    runConduit $ messageSource app .| CC.mapM_ print
+    putStrLn ("BLUBB" :: [Char])
 
-clientSocket :: String -> Int -> IO Socket
-clientSocket hn port = do
-  let hints = defaultHints { addrFlags = [AI_NUMERICHOST, AI_NUMERICSERV], addrSocketType = Stream }
-  addr:_ <- getAddrInfo (Just hints) (Just hn) (Just $ show port)
-  sock <-  socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr)
-  connect sock (addrAddress addr)
-  pure sock
+logit :: B.ByteString -> IO B.ByteString
+logit bs = do
+  putStrLn ("DEBUG: " <> show bs)
+  pure bs
 
+command :: AppData -> P.Put -> ConduitM () Void IO ()
+command app p = sourcePut p .| CC.mapM logit .| appSink app
 
-  
+messageSource :: AppData -> ConduitM () Message IO ()
+messageSource app = appSource app .| CC.mapM logit .| conduitGet2 message

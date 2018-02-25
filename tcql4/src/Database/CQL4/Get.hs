@@ -35,7 +35,7 @@ frameHeader = do
   f' <- G.getWord8
   let fs = foldr (foldFlags f') [] (fromEnum <$> [FlagCompress .. ])
 
-  s' <- G.getInt32be
+  s' <- G.getInt16be
   c' <- G.getWord8
   l' <- G.getInt32be
 
@@ -168,13 +168,11 @@ value = _intLen >>= _value _blob
 shortBytes :: G.Get (Maybe B.ByteString)
 shortBytes = _signedShortLen >>= _maybe _blob
 
--- | a paird of <id><value> where id is a short
+-- | a pair of <id><value> where id is a short
 option :: G.Get (Word16, Value B.ByteString)
 option = (,) <$> short <*> value
 
--- option list is just list option
 -- | a short n followed by n key/value pairs. key is always string.
---
 -- * string map: map string
 -- * string multimap: map (list string)
 -- * bytes map: map bytes

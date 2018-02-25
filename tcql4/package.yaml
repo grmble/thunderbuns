@@ -24,7 +24,10 @@ dependencies:
 - array
 - bytestring
 - cereal
-- network
+- cereal-conduit
+- conduit
+- conduit-combinators
+- conduit-extra
 - scientific
 - text
 - time

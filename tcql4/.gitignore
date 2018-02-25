@@ -1,3 +1,5 @@
 .stack-work/
-tcql4.cabal
+/*.cabal
 *~
+x.*
+*.x

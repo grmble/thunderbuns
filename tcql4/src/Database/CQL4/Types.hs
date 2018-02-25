@@ -8,6 +8,7 @@ No rearranging ...
 module Database.CQL4.Types where
 
 import Data.Int
+import qualified Data.Text as T
 
 -- | The frame header is transmitted before the data of the frame
 data FrameHeader = FrameHeader
@@ -22,7 +23,7 @@ data FrameHeader = FrameHeader
 --
 -- The client must not generate negative stream ids (reserved for events
 -- originating from the server)
-type StreamID = Int32
+type StreamID = Int16
 
 -- | The FrameVersion is either 0x04 (Request) or 0x84 (Response)
 data FrameVersion
@@ -61,3 +62,11 @@ data OpCode
   | OpAuthSuccess
   deriving (Show, Eq, Enum)
 
+-- | Messages that can be received from the server
+--
+-- Only messages that can be received by the client are relevant here
+data Message
+  = ErrorMsg { errorCode :: Int32, errorMsg :: T.Text, errorParams :: [(T.Text, T.Text)] }
+  | ReadyMsg
+  | AuthenticateMsg T.Text
+  deriving (Show, Eq)
