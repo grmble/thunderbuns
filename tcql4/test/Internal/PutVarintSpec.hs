@@ -8,7 +8,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec =
   describe "unsignedVarint" $ do
     it "can handle 0" $ runPut (unsignedVarint 0) `shouldBe` "\x00"
     it "can handle MSB unset (upper bound)" $

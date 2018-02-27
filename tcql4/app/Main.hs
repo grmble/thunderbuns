@@ -20,14 +20,16 @@ main = do
     -- putStrLn ("options command" :: [Char])
     -- runConduit $ command app options
    -> do
-    putStrLn ("startup command" :: [Char])
+    putStrLn ("startup command" :: String)
     runConduit $ command app startup
-    putStrLn ("execute query command" :: [Char])
+    putStrLn ("execute query command" :: String)
     runConduit $
-      command app (executeQuery $ unboundQuery Quorum "select * from blubb")
-    putStrLn ("running message source" :: [Char])
+      command
+        app
+        (executeQuery $ unboundQuery Quorum "select * from system_schema.tables")
+    putStrLn ("running message source" :: String)
     runConduit $ messageSource app .| CC.mapM_ print
-    putStrLn ("BLUBB" :: [Char])
+    putStrLn ("BLUBB" :: String)
 
 logit :: B.ByteString -> IO B.ByteString
 logit bs = do

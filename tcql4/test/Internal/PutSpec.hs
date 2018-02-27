@@ -9,7 +9,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = do
+spec =
   describe "frameHeader" $ do
     it "encode request header" $
       P.runPut (frameHeader RequestFrame [] 0x41 OpError 0x4eadbeef) `shouldBe`

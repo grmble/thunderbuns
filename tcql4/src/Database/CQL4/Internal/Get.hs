@@ -21,36 +21,33 @@ import Data.Time.Clock
 import Data.Word (Word16, Word32)
 import qualified Database.CQL4.Internal.GetVarint as GV
 import Database.CQL4.Types
-import Data.Traversable
-
 
 frameHeader :: G.Get FrameHeader
 frameHeader = do
   v' <- G.getWord8
-  v <- case v' of
-    0x4 -> pure RequestFrame
-    0x84 -> pure ResponseFrame
-    _ -> fail "frameVersion not 0x04/0x84"
-
+  v <-
+    case v' of
+      0x4 -> pure RequestFrame
+      0x84 -> pure ResponseFrame
+      _ -> fail "frameVersion not 0x04/0x84"
   f' <- G.getWord8
-  let fs = foldr (foldFlags f') [] (fromEnum <$> [FlagCompress .. ])
-
+  let fs = foldr (foldFlags f') [] (fromEnum <$> [FlagCompress ..])
   s' <- G.getInt16be
   c' <- G.getWord8
   l' <- G.getInt32be
-
-  pure FrameHeader { frameVersion = v
-                   , frameFlags = fs
-                   , frameStream = s'
-                   , frameOpCode = (toEnum $ fromIntegral c')
-                   , frameLength = l'}
-
+  pure
+    FrameHeader
+      { frameVersion = v
+      , frameFlags = fs
+      , frameStream = s'
+      , frameOpCode = toEnum $ fromIntegral c'
+      , frameLength = l'
+      }
   where
     foldFlags f' e acc =
-      if testBit f' e then (toEnum e) : acc else acc
-
-
-
+      if testBit f' e
+        then toEnum e : acc
+        else acc
 
 --
 --
@@ -164,8 +161,11 @@ shortBytes :: G.Get (Maybe B.ByteString)
 shortBytes = _signedShortLen >>= _maybe _blob
 
 -- | a pair of <id><value> where id is a short
-option :: G.Get (Word16, Value B.ByteString)
-option = (,) <$> short <*> value
+option :: (Word16 -> G.Get a) -> G.Get (Word16, a)
+option f = do
+  w <- G.getWord16be
+  a <- f w
+  pure (w, a)
 
 -- | a short n followed by n key/value pairs. key is always string.
 -- * string map: map string
@@ -243,3 +243,52 @@ timestamp = do
 -- | variable length two's complement encoding of signed integer
 varint :: G.Get Int64
 varint = GV.varint
+
+-- | get a column type
+columnType :: Maybe (T.Text, T.Text) -> G.Get ColumnSpec
+columnType gts = do
+  tspec <-
+    case gts of
+      Just t' -> pure t'
+      Nothing -> (,) <$> string <*> string
+  name <- string
+  ct <- _columnType
+  pure $ ColumnSpec tspec name ct
+
+_columnType :: G.Get ColumnType
+_columnType = snd <$> option _ct
+  where
+    _ct :: Word16 -> G.Get ColumnType
+    _ct 0x0000 = CTCustom <$> string
+    _ct 0x0001 = pure CTAscii
+    _ct 0x0002 = pure CTBigint
+    _ct 0x0003 = pure CTBlob
+    _ct 0x0004 = pure CTBoolean
+    _ct 0x0005 = pure CTCounter
+    _ct 0x0006 = pure CTDecimal
+    _ct 0x0007 = pure CTDouble
+    _ct 0x0008 = pure CTFloat
+    _ct 0x0009 = pure CTInt
+    _ct 0x000B = pure CTTimestamp
+    _ct 0x000C = pure CTUuid
+    _ct 0x000D = pure CTVarchar
+    _ct 0x000E = pure CTVarint
+    _ct 0x000F = pure CTTimeuuid
+    _ct 0x0010 = pure CTInet
+    _ct 0x0011 = pure CTDate
+    _ct 0x0012 = pure CTTime
+    _ct 0x0013 = pure CTSmallint
+    _ct 0x0014 = pure CTTinyint
+    _ct 0x0020 = CTList <$> _columnType
+    _ct 0x0021 = CTMap <$> _columnType <*> _columnType
+    _ct 0x0022 = CTSet <$> _columnType
+    _ct 0x0030 = do
+      ks <- string
+      udt <- string
+      n <- _shortLen
+      tups <- replicateM n ((,) <$> string <*> _columnType)
+      pure $ CTUDT ks udt tups
+    _ct 0x0031 = do
+      n <- _shortLen
+      CTTuple <$> replicateM n _columnType
+    _ct x = fail ("unknown column type: " ++ show x)

@@ -61,3 +61,41 @@ spec = do
           , frameOpCode = OpAuthSuccess
           , frameLength = 0x4eadbeef
           }
+  describe "columnType" $ do
+    it "custom" $
+      G.runGet _columnType "\0\0\0\x01\x41" `shouldBe` Right (CTCustom "A")
+    it "ascii" $ G.runGet _columnType "\x00\x01" `shouldBe` Right CTAscii
+    it "bigint" $ G.runGet _columnType "\x00\x02" `shouldBe` Right CTBigint
+    it "blob" $ G.runGet _columnType "\x00\x03" `shouldBe` Right CTBlob
+    it "boolean" $ G.runGet _columnType "\x00\x04" `shouldBe` Right CTBoolean
+    it "counter" $ G.runGet _columnType "\x00\x05" `shouldBe` Right CTCounter
+    it "decimal" $ G.runGet _columnType "\x00\x06" `shouldBe` Right CTDecimal
+    it "double" $ G.runGet _columnType "\x00\x07" `shouldBe` Right CTDouble
+    it "float" $ G.runGet _columnType "\x00\x08" `shouldBe` Right CTFloat
+    it "int" $ G.runGet _columnType "\x00\x09" `shouldBe` Right CTInt
+    it "timestamp" $
+      G.runGet _columnType "\x00\x0b" `shouldBe` Right CTTimestamp
+    it "uuid" $ G.runGet _columnType "\x00\x0c" `shouldBe` Right CTUuid
+    it "varchar" $ G.runGet _columnType "\x00\x0d" `shouldBe` Right CTVarchar
+    it "varint" $ G.runGet _columnType "\x00\x0e" `shouldBe` Right CTVarint
+    it "timeuuid" $ G.runGet _columnType "\x00\x0f" `shouldBe` Right CTTimeuuid
+    it "inet" $ G.runGet _columnType "\x00\x10" `shouldBe` Right CTInet
+    it "date" $ G.runGet _columnType "\x00\x11" `shouldBe` Right CTDate
+    it "time" $ G.runGet _columnType "\x00\x12" `shouldBe` Right CTTime
+    it "smallint" $ G.runGet _columnType "\x00\x13" `shouldBe` Right CTSmallint
+    it "tinyint" $ G.runGet _columnType "\x00\x14" `shouldBe` Right CTTinyint
+    it "list" $
+      G.runGet _columnType "\x00\x20\x00\x01" `shouldBe` Right (CTList CTAscii)
+    it "map" $
+      G.runGet _columnType "\x00\x21\x00\x01\x00\x02" `shouldBe`
+      Right (CTMap CTAscii CTBigint)
+    it "set" $
+      G.runGet _columnType "\x00\x22\x00\x0d" `shouldBe` Right (CTSet CTVarchar)
+    it "udt" $
+      G.runGet
+        _columnType
+        "\x00\x30\x00\x01\x41\x00\x01\x42\x00\x01\x00\x01\x43\x00\x01" `shouldBe`
+      Right (CTUDT "A" "B" [("C", CTAscii)])
+    it "tuple" $
+      G.runGet _columnType "\x00\x31\x00\x01\x00\x02" `shouldBe`
+      Right (CTTuple [CTBigint])

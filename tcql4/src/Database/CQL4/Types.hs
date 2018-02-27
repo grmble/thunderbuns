@@ -7,11 +7,13 @@ No rearranging ...
 -}
 module Database.CQL4.Types where
 
-import Data.Int
 import qualified Data.ByteString as B
-import qualified Data.Text as T
 import qualified Data.HashMap.Strict as M
-import Data.Time.Clock (UTCTime)
+import Data.Int
+import qualified Data.Scientific as Scientific
+import qualified Data.Text as T
+import Data.Time.Calendar (Day)
+import Data.Time.Clock (DiffTime, UTCTime)
 
 -- | The frame header is transmitted before the data of the frame
 data FrameHeader = FrameHeader
@@ -65,7 +67,6 @@ data OpCode
   | OpAuthSuccess
   deriving (Show, Eq, Enum)
 
-
 -- | Cassandra consistency level
 data Consistency
   = Any
@@ -81,7 +82,6 @@ data Consistency
   | LocalOne
   deriving (Show, Eq, Enum)
 
-
 -- | A value can have a value, it can be null or unset.
 data Value a
   = Value a
@@ -89,14 +89,12 @@ data Value a
   | NotSet
   deriving (Show, Eq)
 
-
 -- | A CQL query
 --
 -- Note that this does not have query flags - the query flags
 -- are determined by the type of the query (and the parameters
 -- that are present)
-data Query
-  = UnboundQuery -- ^ a query without bound variables
+data Query = UnboundQuery -- ^ a query without bound variables
   { query :: T.Text
   , consistency :: Consistency
   , skipMetadata :: Bool
@@ -104,19 +102,7 @@ data Query
   , pagingState :: Maybe B.ByteString
   , serialConsistency :: Maybe Consistency
   , defaultTimestamp :: Maybe UTCTime
-  }
-  {--
-  | Query -- ^ a query with variables bound by position
-  { query :: T.Text
-  , values :: [Value B.ByteString]
-  , consistency :: Consistency
-  , pageSize :: Maybe Int32
-  , pagingState :: Maybe B.ByteString
-  , serialConsistency :: Maybe Consistency
-  , defaultTimestamp :: Maybe UTCTime
-  }
-  --}
-  deriving (Show, Eq)
+  } deriving (Show, Eq)
 
 -- | Query flags
 --
@@ -136,8 +122,77 @@ data QueryFlags
 --
 -- Only messages that can be received by the client are relevant here
 data Message
-  = ErrorMsg { errorCode :: Int32, errorMsg :: T.Text, errorParams :: [(T.Text, T.Text)] }
+  = ErrorMsg { errorCode :: Int32
+             , errorMsg :: T.Text
+             , errorParams :: [(T.Text, T.Text)] }
   | ReadyMsg
   | AuthenticateMsg T.Text
   | SupportedMsg (M.HashMap T.Text [T.Text])
+  | ResultMsg QueryResult
+  deriving (Show, Eq)
+
+data QueryResult
+  = QueryResultVoid
+  | QueryResultRows { columnsCount :: Int
+                    , globalTableSpec :: Maybe (T.Text, T.Text)
+                    , columns :: [ColumnSpec]
+                    , rowsCount :: Int
+                    , rows :: [TypedValue] }
+  | QueryResultKeyspace T.Text
+  | QueryResultPrepared -- XXX implement me
+  | QueryResultSchemaChanged -- XXX implement me
+  deriving (Show, Eq)
+
+data ColumnSpec = ColumnSpec
+  { tableSpec :: (T.Text, T.Text)
+  , columnName :: T.Text
+  , columnType :: ColumnType
+  } deriving (Show, Eq)
+
+-- to think that i could have started some other project. any other project
+data ColumnType
+  = CTCustom T.Text
+  | CTAscii
+  | CTBigint
+  | CTBlob
+  | CTBoolean
+  | CTCounter
+  | CTDecimal
+  | CTDouble
+  | CTFloat
+  | CTInt
+  | CTTimestamp
+  | CTUuid
+  | CTVarchar
+  | CTVarint
+  | CTTimeuuid
+  | CTInet
+  | CTDate
+  | CTTime
+  | CTSmallint
+  | CTTinyint
+  | CTList ColumnType
+  | CTMap ColumnType
+          ColumnType
+  | CTSet ColumnType
+  | CTUDT T.Text
+          T.Text
+          [(T.Text, ColumnType)]
+  | CTTuple [ColumnType]
+  deriving (Show, Eq)
+
+data TypedValue
+  = TextValue T.Text
+  | LongValue Int64
+  | IntValue Int32
+  | ShortValue Int16
+  | TinyValue Int8
+  | DecimalValue Scientific.Scientific
+  | BoolValue Bool
+  | BlobValue B.ByteString
+  | TimestampValue UTCTime
+  | DateValue Day
+  | TimeValue DiffTime
+  | UUIDValue B.ByteString
+  | TimeUUIDValue B.ByteString
   deriving (Show, Eq)

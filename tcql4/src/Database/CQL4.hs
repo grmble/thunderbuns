@@ -1,5 +1,6 @@
 module Database.CQL4 where
 
+import Data.Foldable
 import qualified Data.HashMap.Strict as M
 import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
@@ -7,7 +8,6 @@ import qualified Data.Text as T
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
 import Database.CQL4.Types
-import Data.Foldable
 
 -- | Put the startup message
 --
@@ -15,7 +15,7 @@ import Data.Foldable
 -- the server will respond either with `ERROR`
 -- `READY` or `AUTHENTICATE`
 startup :: P.Put
-startup = do
+startup =
   P.putNested
     (CP.frameHeader RequestFrame [] 0 OpStartup)
     (CP.map CP.string (M.singleton "CQL_VERSION" "3.3.0"))
@@ -24,19 +24,23 @@ startup = do
 --
 -- Get server options.  This can be issued before startup.
 options :: P.Put
-options =
-  CP.frameHeader RequestFrame [] 0 OpOptions 0
-
+options = CP.frameHeader RequestFrame [] 0 OpOptions 0
 
 -- | query without bound parameters
 unboundQuery :: Consistency -> T.Text -> Query
 unboundQuery cl cql =
-  UnboundQuery { query = cql, consistency = cl, skipMetadata = False, pageSize = Nothing
-             , pagingState = Nothing, serialConsistency = Nothing
-             , defaultTimestamp = Nothing }
+  UnboundQuery
+    { query = cql
+    , consistency = cl
+    , skipMetadata = False
+    , pageSize = Nothing
+    , pagingState = Nothing
+    , serialConsistency = Nothing
+    , defaultTimestamp = Nothing
+    }
 
 executeQuery :: Query -> P.Put
-executeQuery q = do
+executeQuery q =
   P.putNested (CP.frameHeader RequestFrame [] 0 OpQuery) $ do
     CP.longString (query q)
     CP.consistency (consistency q)
@@ -46,17 +50,14 @@ executeQuery q = do
     for_ (pagingState q) CP.bytes
     for_ (serialConsistency q) CP.consistency
     for_ (defaultTimestamp q) CP.timestamp
-    
-    
-    
--- | 
 
+-- | 
 -- | Get the next message from the server
 message :: G.Get Message
 message = do
   h <- CG.frameHeader
   G.isolate (fromIntegral $ frameLength h) $
-    case (frameOpCode h) of
+    case frameOpCode h of
       OpError -> errorMessage
       OpReady -> pure ReadyMsg
       OpAuthenticate -> AuthenticateMsg <$> CG.string
