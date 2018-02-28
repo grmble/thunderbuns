@@ -17,7 +17,7 @@ instance Arbitrary Text where
   arbitrary = fromString <$> (arbitrary :: Gen String)
 
 spec :: Spec
-spec = do
-  describe "check put/get identity" $ do
+spec =
+  describe "check put/get identity" $
     it "string" $ property $
       \txt -> G.runGet CG.string (P.runPut (CP.string txt)) == Right (txt::Text)

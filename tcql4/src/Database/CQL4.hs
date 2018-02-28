@@ -1,7 +1,15 @@
-module Database.CQL4 where
+module Database.CQL4
+  ( startup
+  , options
+  , unboundQuery
+  , executeQuery
+  , message
+  , errorMessage
+  ) where
 
 import Data.Foldable
 import qualified Data.HashMap.Strict as M
+import Data.Int
 import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
 import qualified Data.Text as T
@@ -64,9 +72,6 @@ message = do
       OpSupported -> SupportedMsg <$> CG.map (CG.list CG.string)
       x -> fail ("not implemented: " ++ show x)
 
-show' :: Show a => a -> T.Text
-show' = T.pack . show
-
 errorMessage :: G.Get Message
 errorMessage = do
   code <- CG.int
@@ -75,97 +80,68 @@ errorMessage = do
     0x0000 -> pure $ ErrorMsg code msg []
     0x000A -> pure $ ErrorMsg code msg []
     0x0100 -> pure $ ErrorMsg code msg []
-    0x1000 -> do
-      cl <- CG.consistency
-      req <- CG.int
-      alive <- CG.int
-      pure $
-        ErrorMsg
-          code
-          msg
-          [("cl", show' cl), ("req", show' req), ("alive", show' alive)]
+    0x1000 ->
+      _errorMsg code msg [_epConsistency, _epInt "req", _epInt "alive"]
     0x1001 -> pure $ ErrorMsg code msg []
     0x1002 -> pure $ ErrorMsg code msg []
     0x1003 -> pure $ ErrorMsg code msg []
-    0x1100 -> do
-      cl <- CG.consistency
-      received <- CG.int
-      blockFor <- CG.int
-      writeType <- CG.string
-      pure $
-        ErrorMsg
-          code
-          msg
-          [ ("cl", show' cl)
-          , ("received", show' received)
-          , ("blockFor", show' blockFor)
-          , ("writeType", writeType)
-          ]
-    0x1200 -> do
-      cl <- CG.consistency
-      received <- CG.int
-      blockFor <- CG.int
-      dataPresent <- CG.boolean
-      pure $
-        ErrorMsg
-          code
-          msg
-          [ ("cl", show' cl)
-          , ("received", show' received)
-          , ("blockFor", show' blockFor)
-          , ("dataPresent", show' dataPresent)
-          ]
-    0x1300 -> do
-      cl <- CG.consistency
-      received <- CG.int
-      blockFor <- CG.int
-      numFailures <- CG.int
-      dataPresent <- CG.boolean
-      pure $
-        ErrorMsg
-          code
-          msg
-          [ ("cl", show' cl)
-          , ("received", show' received)
-          , ("blockFor", show' blockFor)
-          , ("numFailures", show' numFailures)
-          , ("dataPresent", show' dataPresent)
-          ]
-    0x1400 -> do
-      keyspace <- CG.string
-      function <- CG.string
-      argTypes <- CG.list CG.string
-      pure $
-        ErrorMsg
-          code
-          msg
-          [ ("keyspace", keyspace)
-          , ("function", function)
-          , ("argTypes", show' argTypes)
-          ]
-    0x1500 -> do
-      cl <- CG.consistency
-      received <- CG.int
-      blockFor <- CG.int
-      numFailures <- CG.int
-      writeType <- CG.string
-      pure $
-        ErrorMsg
-          code
-          msg
-          [ ("cl", show' cl)
-          , ("received", show' received)
-          , ("blockFor", show' blockFor)
-          , ("numFailures", show' numFailures)
-          , ("writeType", writeType)
-          ]
+    0x1100 ->
+      _errorMsg
+        code
+        msg
+        [_epConsistency, _epInt "received", _epInt "blockFor", _epString "writeType"]
+    0x1200 ->
+      _errorMsg
+        code
+        msg
+        [_epConsistency, _epInt "received", _epInt "blockFor", _epBool "dataPresent"]
+    0x1300 ->
+      _errorMsg
+        code
+        msg
+        [ _epConsistency
+        , _epInt "received"
+        , _epInt "blockFor"
+        , _epInt "numFailures"
+        , _epBool "dataPresent"
+        ]
+    0x1400 ->
+      _errorMsg
+        code
+        msg
+        [ _epString "keyspace"
+        , _epString "function"
+        , _ep "argTypes" show' (CG.list CG.string)
+        ]
+    0x1500 ->
+      _errorMsg
+        code
+        msg
+        [ _epConsistency
+        , _epInt "received"
+        , _epInt "blockFor"
+        , _epInt "numFailures"
+        , _epString "writeType"
+        ]
     0x2000 -> pure $ ErrorMsg code msg []
     0x2100 -> pure $ ErrorMsg code msg []
     0x2200 -> pure $ ErrorMsg code msg []
     0x2300 -> pure $ ErrorMsg code msg []
-    0x2400 -> do
-      keyspace <- CG.string
-      table <- CG.string
-      pure $ ErrorMsg code msg [("keyspace", keyspace), ("table", table)]
+    0x2400 -> _errorMsg code msg [_epString "keyspace", _epString "table"]
     0x2500 -> pure $ ErrorMsg code msg []
     x -> pure $ ErrorMsg code msg [("unknown code", show' x)]
+  where
+    show' :: Show a => a -> T.Text
+    show' = T.pack . show
+    _errorMsg :: Int32 -> T.Text -> [G.Get (T.Text, T.Text)] -> G.Get Message
+    _errorMsg code msg ps = ErrorMsg code msg <$> sequence ps
+    _ep :: T.Text -> (a -> T.Text) -> G.Get a -> G.Get (T.Text, T.Text)
+    _ep n f g = ((n, ) . f) <$> g
+    _epConsistency :: G.Get (T.Text, T.Text)
+    _epConsistency = _ep "cl" show' CG.consistency
+    _epInt :: T.Text -> G.Get (T.Text, T.Text)
+    _epInt n = _ep n show' CG.int
+    _epString :: T.Text -> G.Get (T.Text, T.Text)
+    _epString n = (n, ) <$> CG.string
+    _epBool :: T.Text -> G.Get (T.Text, T.Text)
+    _epBool n = _ep n show' CG.boolean
