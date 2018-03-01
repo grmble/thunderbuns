@@ -67,7 +67,7 @@ spec = do
     it "ascii" $ G.runGet _columnType "\x00\x01" `shouldBe` Right CTAscii
     it "bigint" $ G.runGet _columnType "\x00\x02" `shouldBe` Right CTBigint
     it "blob" $ G.runGet _columnType "\x00\x03" `shouldBe` Right CTBlob
-    it "boolean" $ G.runGet _columnType "\x00\x04" `shouldBe` Right CTBoolean
+    it "bool" $ G.runGet _columnType "\x00\x04" `shouldBe` Right CTBool
     it "counter" $ G.runGet _columnType "\x00\x05" `shouldBe` Right CTCounter
     it "decimal" $ G.runGet _columnType "\x00\x06" `shouldBe` Right CTDecimal
     it "double" $ G.runGet _columnType "\x00\x07" `shouldBe` Right CTDouble

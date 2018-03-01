@@ -4,15 +4,18 @@ module Database.CQL4
   , unboundQuery
   , executeQuery
   , message
-  , errorMessage
   ) where
 
-import Data.Foldable
+import Control.Monad (replicateM)
+import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
-import Data.Int
+import Data.Int (Int32)
+import qualified Data.List as L
+import Data.Monoid ((<>))
 import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
 import qualified Data.Text as T
+import Data.Traversable (for)
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
 import Database.CQL4.Types
@@ -69,8 +72,41 @@ message = do
       OpError -> errorMessage
       OpReady -> pure ReadyMsg
       OpAuthenticate -> AuthenticateMsg <$> CG.string
-      OpSupported -> SupportedMsg <$> CG.map (CG.list CG.string)
+      OpSupported -> SupportedMsg <$> CG.strmap (CG.list CG.string)
+      OpResult -> resultMessage
       x -> fail ("not implemented: " ++ show x)
+
+resultMessage :: G.Get Message
+resultMessage = do
+  kind <- CG.int
+  case kind of
+    0x0001 -> pure $ ResultMsg QueryResultVoid
+    0x0002 -> do
+      flags <- CG.metadataFlags
+      colcnt <- fromIntegral <$> CG.int
+      ps <-
+        if HasMorePages `L.elem` flags
+          then Just <$> (CG._shortLen >>= CG._blob)
+          else pure Nothing
+      -- XXX: when ?
+      if NoMetadata `L.elem` flags
+        -- would have to pass it in from some prior prepare result
+        -- can't parse the result rows without knowing the format
+        then fail "NoMetadata not supported"
+        else pure ()
+      gt <-
+        if GlobalTableSpec `L.elem` flags
+          then Just <$> ((,) <$> CG.string <*> CG.string)
+          else pure Nothing
+      colSpecs <- replicateM colcnt (CG.columnType gt)
+      rowcnt <- fromIntegral <$> CG.int
+      rows <-
+        replicateM rowcnt (for colSpecs (\x -> CG.typedBytes (columnType x)))
+      pure $ ResultMsg $ QueryResultRows colcnt gt ps colSpecs rowcnt rows
+    0x0003 -> do
+      ks <- CG.string
+      pure $ ResultMsg $ QueryResultKeyspace ks
+    _ -> fail ("Unknown result message kind: " <> show kind)
 
 errorMessage :: G.Get Message
 errorMessage = do
@@ -80,8 +116,7 @@ errorMessage = do
     0x0000 -> pure $ ErrorMsg code msg []
     0x000A -> pure $ ErrorMsg code msg []
     0x0100 -> pure $ ErrorMsg code msg []
-    0x1000 ->
-      _errorMsg code msg [_epConsistency, _epInt "req", _epInt "alive"]
+    0x1000 -> _errorMsg code msg [_epConsistency, _epInt "req", _epInt "alive"]
     0x1001 -> pure $ ErrorMsg code msg []
     0x1002 -> pure $ ErrorMsg code msg []
     0x1003 -> pure $ ErrorMsg code msg []
@@ -89,12 +124,20 @@ errorMessage = do
       _errorMsg
         code
         msg
-        [_epConsistency, _epInt "received", _epInt "blockFor", _epString "writeType"]
+        [ _epConsistency
+        , _epInt "received"
+        , _epInt "blockFor"
+        , _epString "writeType"
+        ]
     0x1200 ->
       _errorMsg
         code
         msg
-        [_epConsistency, _epInt "received", _epInt "blockFor", _epBool "dataPresent"]
+        [ _epConsistency
+        , _epInt "received"
+        , _epInt "blockFor"
+        , _epBool "dataPresent"
+        ]
     0x1300 ->
       _errorMsg
         code
@@ -144,4 +187,4 @@ errorMessage = do
     _epString :: T.Text -> G.Get (T.Text, T.Text)
     _epString n = (n, ) <$> CG.string
     _epBool :: T.Text -> G.Get (T.Text, T.Text)
-    _epBool n = _ep n show' CG.boolean
+    _epBool n = _ep n show' CG.bool

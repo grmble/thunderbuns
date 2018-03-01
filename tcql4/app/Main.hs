@@ -1,6 +1,7 @@
 module Main where
 
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Base16 as B16
 import Data.Conduit
 import Data.Conduit.Cereal
 import qualified Data.Conduit.Combinators as CC
@@ -26,14 +27,25 @@ main = do
     runConduit $
       command
         app
-        (executeQuery $ unboundQuery Quorum "select * from system_schema.tables")
+        (executeQuery $ unboundQuery Quorum
+         -- XXX: maps crash us - see tables
+         -- "select keyspace_name, table_name, crc_check_chance, default_time_to_live from system_schema.tables"
+         -- peers is empty
+         -- "select peer from system.peers"
+        --"select durable_writes from system_schema.durable_writes"
+        -- "select broadcast_address, gossip_generation, host_id, listen_address, rpc_address, schema_version from system.local"
+        -- "select * from test.mylist"
+        "select * from system_schema.tables"
+
+
+        )
     putStrLn ("running message source" :: String)
     runConduit $ messageSource app .| CC.mapM_ print
     putStrLn ("BLUBB" :: String)
 
 logit :: B.ByteString -> IO B.ByteString
 logit bs = do
-  putStrLn ("DEBUG: " <> show bs)
+  putStrLn ("DEBUG: " <> show (B16.encode bs))
   pure bs
 
 command :: AppData -> P.Put -> ConduitM () Void IO ()

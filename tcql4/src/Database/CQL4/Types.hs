@@ -14,6 +14,7 @@ import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Time.Calendar (Day)
 import Data.Time.Clock (DiffTime, UTCTime)
+import Data.Word (Word32, Word64)
 
 -- | The frame header is transmitted before the data of the frame
 data FrameHeader = FrameHeader
@@ -82,13 +83,6 @@ data Consistency
   | LocalOne
   deriving (Show, Eq, Enum)
 
--- | A value can have a value, it can be null or unset.
-data Value a
-  = Value a
-  | NullValue
-  | NotSet
-  deriving (Show, Eq)
-
 -- | A CQL query
 --
 -- Note that this does not have query flags - the query flags
@@ -118,6 +112,15 @@ data QueryFlags
   | QFNamedValues
   deriving (Show, Eq, Enum)
 
+-- | Metadata flags
+--
+-- again, bit position enum
+data MetadataFlag
+  = GlobalTableSpec
+  | HasMorePages
+  | NoMetadata
+  deriving (Show, Eq, Enum)
+
 -- | Messages that can be received from the server
 --
 -- Only messages that can be received by the client are relevant here
@@ -131,13 +134,15 @@ data Message
   | ResultMsg QueryResult
   deriving (Show, Eq)
 
+-- | QueryResult represents the different result types for a query
 data QueryResult
-  = QueryResultVoid
-  | QueryResultRows { columnsCount :: Int
-                    , globalTableSpec :: Maybe (T.Text, T.Text)
-                    , columns :: [ColumnSpec]
-                    , rowsCount :: Int
-                    , rows :: [TypedValue] }
+  = QueryResultVoid -- ^ query with empty/no result
+  | QueryResultRows { resultColumnsCount :: Int
+                    , resultGlobalTableSpec :: Maybe (T.Text, T.Text)
+                    , resultPagingState :: Maybe B.ByteString
+                    , resultColumns :: [ColumnSpec]
+                    , resultRowsCount :: Int
+                    , resultRows :: [[TypedValue]] }
   | QueryResultKeyspace T.Text
   | QueryResultPrepared -- XXX implement me
   | QueryResultSchemaChanged -- XXX implement me
@@ -155,7 +160,7 @@ data ColumnType
   | CTAscii
   | CTBigint
   | CTBlob
-  | CTBoolean
+  | CTBool
   | CTCounter
   | CTDecimal
   | CTDouble
@@ -181,18 +186,61 @@ data ColumnType
   | CTTuple [ColumnType]
   deriving (Show, Eq)
 
+-- | A typed value in a query result
+--
+-- regarding the bytes/value confusion from the spec:
+-- `bytes` are received in query results. they have an `int` length,
+-- negative values mean `NULL`.  0 length means empty whatever that means.
+-- I assume an empty string, false boolean, epoch date, 0 integer, ...
+--
+-- `values` are SENT to the server, here -1 means NULL, -2 means NOT SET.
+-- in the intereset of not having to redefine all this:  any value can be null.
+-- if `NotSet` is required, the `TypedValue` is wrapped in a `Maybe`,
+-- Nothing means not set, NullValue means null.
 data TypedValue
-  = TextValue T.Text
+  = NullValue -- ^ null value
+  | CustomValue T.Text
+                B.ByteString -- ^ the custom type and the value as unprocessed bytes
+  | TextValue T.Text
   | LongValue Int64
-  | IntValue Int32
-  | ShortValue Int16
-  | TinyValue Int8
-  | DecimalValue Scientific.Scientific
   | BoolValue Bool
   | BlobValue B.ByteString
+  | CounterValue Word64
+  | DecimalValue Scientific.Scientific
+  | DoubleValue Double
+  | FloatValue Float
+  | IntValue Int32
   | TimestampValue UTCTime
+  | UUIDValue UUID
+  -- VarcharValue is like ascii value (we always decode utf-8, it words for ascii)
+  -- VarcharValue T.Text
+  -- varint decodes to Int64, just like LongValue
+  -- VarintValue Int64
+  | TimeUUIDValue UUID
+  -- XXX protocol spec says Inet is IPAddress + Port, but it seems it's only the address
+  -- | InetValue (IPAddress, Int32)
+  | InetValue IPAddress
   | DateValue Day
   | TimeValue DiffTime
-  | UUIDValue B.ByteString
-  | TimeUUIDValue B.ByteString
+  | SmallintValue Int16
+  | TinyintValue Int8
+  | ListValue [TypedValue]
+  | MapValue [(TypedValue, TypedValue)]
+  | SetValue [TypedValue]
+  | UDTValue T.Text
+             T.Text
+             [(T.Text, TypedValue)]
+  | TupleValue [TypedValue]
   deriving (Show, Eq)
+
+-- | A ip address
+data IPAddress
+  = IPAddressV4 Word32
+  | IPAddressV6 (Word32, Word32, Word32, Word32)
+  deriving (Show, Eq)
+
+-- | A UUID
+newtype UUID =
+  UUID B.ByteString
+  deriving (Show, Eq)
+-- | a 16 bytes long uuid
