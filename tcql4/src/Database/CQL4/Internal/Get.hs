@@ -5,6 +5,7 @@ import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.HashMap.Strict as M
 import Data.Int (Int16, Int32, Int64)
+import qualified Data.List as L
 import Data.Monoid ((<>))
 import qualified Data.Scientific as Scientific
 import qualified Data.Serialize.Get as G
@@ -20,7 +21,6 @@ import Data.Time.Clock
   )
 import Data.Traversable (for)
 import Data.Word (Word16)
-import qualified Database.CQL4.Internal.GetVarint as GV
 import Database.CQL4.Types
 
 frameHeader :: G.Get FrameHeader
@@ -188,11 +188,11 @@ date = do
   pure $ addDays (fromIntegral d) _epochDate
 
 -- | int scale followed by varint value (unscaled)E(-scale)
-decimal :: G.Get Scientific.Scientific
-decimal = do
+decimal :: Int -> G.Get Scientific.Scientific
+decimal n = do
   scale <- int
-  unscaled <- varint
-  pure $ Scientific.scientific (fromIntegral unscaled) (fromIntegral $ -scale)
+  unscaled <- varint (n - 4)
+  pure $ Scientific.scientific unscaled (fromIntegral $ -scale)
 
 -- a 8-byte floating point number in the ieee 754 format
 double :: G.Get Double
@@ -250,11 +250,19 @@ timestamp = do
 
 -- | variable length two's complement encoding of signed integer
 --
--- XXX
--- when only positive values are in the row, it is apparently not zigzagcoded
--- as soon as negative values show up, it is, but the get hangs ...
-varint :: G.Get Int64
-varint = GV.varint
+-- this is when reading a result value - we know the length.
+-- it's just the given number of bytes in big endian order.
+-- when the first byte has the MSB set, it's a negative number.
+--
+-- this is different from cassandra vint coding - which is what
+-- i tried to use at first.
+varint :: Int -> G.Get Integer
+varint n = do
+  i0 <- G.getInt8
+  is <- replicateM (n - 1) G.getInt8
+  pure $ L.foldl' go (fromIntegral i0) is
+  where
+    go acc i = (acc `shiftL` 8) .|. (fromIntegral i .&. 0xFF)
 
 -- | get a column type
 columnType :: Maybe (T.Text, T.Text) -> G.Get ColumnSpec
@@ -324,7 +332,7 @@ typedBytes ct = do
            CTBlob -> BlobValue <$> go "blob" len "" (_blob len)
            CTBool -> BoolValue <$> go "bool" len False bool
            CTCounter -> LongValue <$> go "counter" len 0 long
-           CTDecimal -> DecimalValue <$> go "decimal" len 0 decimal
+           CTDecimal -> DecimalValue <$> go "decimal" len 0 (decimal len)
            CTDouble -> DoubleValue <$> go "double" len 0 double
            CTFloat -> FloatValue <$> go "float" len 0 float
            CTInt -> IntValue <$> go "int" len 0 int
@@ -332,18 +340,20 @@ typedBytes ct = do
              TimestampValue <$> go "timestamp" len _epochTimestamp timestamp
            CTUuid -> UUIDValue <$> gofail len "empty.uuid" uuid
            CTVarchar -> TextValue <$> go "varchar" len "" (_string len)
-           CTVarint -> LongValue <$> go "varint" len 0 varint
+           CTVarint -> VarintValue <$> go "varint" len 0 (varint len)
            CTTimeuuid -> TimeUUIDValue <$> gofail len "empty.timeuuid" uuid
            CTInet -> InetValue <$> gofail len "empty.inet.address" ipAddress
            CTDate -> DateValue <$> go "date" len _epochDate date
            CTTime -> TimeValue <$> go "time" len 0 time
            CTSmallint -> SmallintValue <$> go "smallint" len 0 signedShort
            CTTinyint -> TinyintValue <$> go "tinyint" len 0 G.getInt8
-           CTList ct' -> ListValue <$> go "list" len [] (bytesList $ typedBytes ct')
+           CTList ct' ->
+             ListValue <$> go "list" len [] (bytesList $ typedBytes ct')
            CTMap ctk ctv ->
              MapValue <$>
              go "map" len [] (bytesMap (typedBytes ctk) (typedBytes ctv))
-           CTSet ct' -> SetValue <$> go "set" len [] (bytesList $ typedBytes ct')
+           CTSet ct' ->
+             SetValue <$> go "set" len [] (bytesList $ typedBytes ct')
            CTUDT ks un cts
           -- XXX implement me
             -> undefined

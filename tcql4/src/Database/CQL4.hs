@@ -67,7 +67,7 @@ executeQuery q =
 message :: G.Get Message
 message = do
   h <- CG.frameHeader
-  G.isolate (fromIntegral $ frameLength h) $
+  G.label "message" $ G.isolate (fromIntegral $ frameLength h) $
     case frameOpCode h of
       OpError -> errorMessage
       OpReady -> pure ReadyMsg

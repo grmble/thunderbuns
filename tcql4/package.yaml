@@ -22,13 +22,13 @@ description:         Please see the README on Github at <https://github.com/grmb
 dependencies:
 - base >= 4.10 && < 5
 - array
-- base16-bytestring
 - bytestring
 - cereal
 - cereal-conduit
 - conduit
 - conduit-combinators
 - conduit-extra
+- hexdump-xxd
 - scientific
 - text
 - time

@@ -215,7 +215,7 @@ data TypedValue
   -- VarcharValue is like ascii value (we always decode utf-8, it words for ascii)
   -- VarcharValue T.Text
   -- varint decodes to Int64, just like LongValue
-  -- VarintValue Int64
+  | VarintValue Integer
   | TimeUUIDValue UUID
   -- XXX protocol spec says Inet is IPAddress + Port, but it seems it's only the address
   -- | InetValue (IPAddress, Int32)
