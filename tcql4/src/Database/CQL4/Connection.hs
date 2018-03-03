@@ -14,16 +14,15 @@ to a command.
 -}
 module Database.CQL4.Connection
   ( ConnectionIO
-  , ConnectionData(..)
-  , connectionData
+  , Connection(..)
+  , connection
+  , connection'
   , hexdumpLogger
-  , initConnection
   , closeConnection
-  , runConnection
-  , runConnection'
   , command
   ) where
 
+import Control.Concurrent.QSem
 import Control.Monad.Reader (ReaderT, ask, asks, liftIO, runReaderT)
 import qualified Data.ByteString as B
 import Data.ByteString.Hexdump (hexdump)
@@ -38,15 +37,16 @@ import Data.String (fromString)
 import Database.CQL4.Internal.Protocol
 import Database.CQL4.Types
 import UnliftIO.Concurrent (ThreadId, forkIO, killThread)
-import UnliftIO.Exception (bracket_)
+import UnliftIO.Exception (onException, throwString)
 import UnliftIO.STM
 
 -- | A Connection is a ReaderT IO with mutable state
-type ConnectionIO = ReaderT ConnectionData IO
+type ConnectionIO = ReaderT Connection IO
 
 -- | The data inside a ConnectionIO ReaderT
-data ConnectionData = ConnectionData
+data Connection = Connection
   { connSocket :: AppData -- ^ conduit app data for the underlying socket
+  , connSem :: QSem -- ^ semaphore that guards writing to the socket
   , connStreamID :: TVar StreamID -- ^ counter for generating stream ids
   , connPending :: TVar (M.HashMap StreamID (TMVar Message)) -- ^ map of pending requests
   , connDispatcher :: TMVar ThreadId -- ^ dedicated thread to dispatch server messages
@@ -60,13 +60,29 @@ data ConnectionData = ConnectionData
 -- See hexdumpLogger or (const pure)
 type Logger = String -> B.ByteString -> IO B.ByteString
 
--- | ConnectionData constructor for use with runReaderT
-connectionData :: AppData -> IO ConnectionData
-connectionData sock = do
+-- | Connection constructor for use with runReaderT
+--
+-- The connection is completely set up after this -
+-- the CQL handshake has taken place, everything is ready.
+--
+-- Note that this allocates resources, you should bracket
+-- this call with `closeConnection`.
+connection :: AppData -> IO Connection
+connection sock = connection' (const pure) sock
+
+-- | Connection constructor that takes a logger.
+--
+-- Choices are `hexdumpLogger` or `(const pure)`
+connection' :: Logger -> AppData -> IO Connection
+connection' logger sock = do
   idVar <- newTVarIO 0
   pVar <- newTVarIO M.empty
   dVar <- newEmptyTMVarIO
-  pure (ConnectionData sock idVar pVar dVar (const pure))
+  qsem <- newQSem 1
+  let conn = (Connection sock qsem idVar pVar dVar logger)
+  onException
+    (runReaderT initConnection conn *> pure conn)
+    (runReaderT closeConnection conn)
 
 -- | Log a hexdump of the request/response
 hexdumpLogger :: Logger
@@ -74,22 +90,6 @@ hexdumpLogger msg bs = do
   LB.putStr
     ((fromString msg) `LB.append` "\n" `LB.append` (hexdump (LB.fromStrict bs)))
   pure bs
-
--- | Run a ConnectionIO
---
--- A helper that calls runReaderT, initConnection and closeConnection
--- with correct bracketing.
-runConnection :: AppData -> ConnectionIO a -> IO a
-runConnection = runConnection' (const pure)
-
--- | Run a ConnectionIO - explicit version
-runConnection' :: Logger -> AppData -> ConnectionIO a -> IO a
-runConnection' logger sock conn = do
-  cdata <- (\x -> x {connLogger = logger}) <$> connectionData sock
-  runReaderT go cdata
-  where
-    go = do
-      bracket_ initConnection closeConnection conn
 
 -- | Initialize the connection.
 --
@@ -112,8 +112,10 @@ initConnection = do
     x -> liftIO $ messageError "unexpected response type" x
 
 -- | Raise an IOError with a message string for a response
+--
+-- XXX: custom error type
 messageError :: String -> Message -> IO a
-messageError str msg = ioError $ userError (str ++ ": " ++ show msg)
+messageError str msg = throwString (str ++ ": " ++ show msg)
 
 -- | Close the connection.
 --
