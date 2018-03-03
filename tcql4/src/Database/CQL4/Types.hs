@@ -1,3 +1,4 @@
+{-# LANGUAGE StrictData #-}
 {- | CQL Types common for get and put
 
 Note that the values of the Enums are highly magical -

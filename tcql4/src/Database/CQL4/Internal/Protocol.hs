@@ -1,4 +1,5 @@
-module Database.CQL4
+{- | CQL4 protocol defined in terms of cereal gets and puts -}
+module Database.CQL4.Internal.Protocol
   ( startup
   , options
   , unboundQuery
@@ -25,17 +26,17 @@ import Database.CQL4.Types
 -- This is the first request on a new connection and
 -- the server will respond either with `ERROR`
 -- `READY` or `AUTHENTICATE`
-startup :: P.Put
-startup =
+startup :: StreamID -> P.Put
+startup sid =
   P.putNested
-    (CP.frameHeader RequestFrame [] 0 OpStartup)
+    (CP.frameHeader RequestFrame [] sid OpStartup)
     (CP.map CP.string (M.singleton "CQL_VERSION" "3.3.0"))
 
 -- | Put the Options message
 --
 -- Get server options.  This can be issued before startup.
-options :: P.Put
-options = CP.frameHeader RequestFrame [] 0 OpOptions 0
+options :: StreamID -> P.Put
+options sid = CP.frameHeader RequestFrame [] sid OpOptions 0
 
 -- | query without bound parameters
 unboundQuery :: Consistency -> T.Text -> Query
@@ -50,9 +51,9 @@ unboundQuery cl cql =
     , defaultTimestamp = Nothing
     }
 
-executeQuery :: Query -> P.Put
-executeQuery q =
-  P.putNested (CP.frameHeader RequestFrame [] 0 OpQuery) $ do
+executeQuery :: Query -> StreamID -> P.Put
+executeQuery q sid =
+  P.putNested (CP.frameHeader RequestFrame [] sid OpQuery) $ do
     CP.longString (query q)
     CP.consistency (consistency q)
     CP.queryFlags q
@@ -64,16 +65,16 @@ executeQuery q =
 
 -- | 
 -- | Get the next message from the server
-message :: G.Get Message
+message :: G.Get (FrameHeader, Message)
 message = do
   h <- CG.frameHeader
   G.label "message" $ G.isolate (fromIntegral $ frameLength h) $
     case frameOpCode h of
-      OpError -> errorMessage
-      OpReady -> pure ReadyMsg
-      OpAuthenticate -> AuthenticateMsg <$> CG.string
-      OpSupported -> SupportedMsg <$> CG.strmap (CG.list CG.string)
-      OpResult -> resultMessage
+      OpError -> (h,) <$> errorMessage
+      OpReady -> pure (h, ReadyMsg)
+      OpAuthenticate -> (h,) <$> AuthenticateMsg <$> CG.string
+      OpSupported -> (h,) <$> SupportedMsg <$> CG.strmap (CG.list CG.string)
+      OpResult -> (h,) <$> resultMessage
       x -> fail ("not implemented: " ++ show x)
 
 resultMessage :: G.Get Message

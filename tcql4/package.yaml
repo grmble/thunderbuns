@@ -29,10 +29,13 @@ dependencies:
 - conduit-combinators
 - conduit-extra
 - hexdump-xxd
+- mtl
 - scientific
+- stm
 - text
 - time
 - unordered-containers
+- unliftio
 # intero needs these here ...
 - hspec
 - QuickCheck
