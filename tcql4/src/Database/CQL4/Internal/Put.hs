@@ -2,13 +2,18 @@ module Database.CQL4.Internal.Put where
 
 import Data.Bits
 import qualified Data.ByteString as B
-import Data.Foldable
+import qualified Data.ByteString.Lazy as LB
+import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import Data.Int
+import qualified Data.List as L
+import qualified Data.Scientific as Scientific
 import Data.Serialize.Put as P
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Time.Clock
+import Data.UUID as U
+import Data.Word
 import qualified Database.CQL4.Internal.Get as CG
 import Database.CQL4.Types
 
@@ -49,6 +54,38 @@ int = P.putInt32be
 bytes :: B.ByteString -> P.Put
 bytes = _withIntLen
 
+-- | varint VALUE - i.e. it has a leading int length
+varint :: Integer -> P.Put
+varint i = do
+  let bs = computeVarint i
+  _putIntLen $ L.length bs
+  for_ bs P.putWord8
+
+computeVarint :: Integer -> [Word8]
+computeVarint n =
+  let nbs = natBytes' [] (abs n)
+      bs = bytes' [] n (L.length nbs)
+      mb = fromIntegral (head bs) :: Int8
+   in case (n < 0, mb < 0) of
+        (True, True) -> bs
+        (True, False) -> 0xff : bs
+        (False, True) -> 0 : bs
+        (False, False) -> bs
+  where
+    natBytes' :: [Word8] -> Integer -> [Word8]
+    natBytes' acc 0 =
+      if L.null acc
+        then [0]
+        else acc
+    natBytes' !acc m =
+      natBytes' (fromIntegral (m .&. 0xFF) : acc) (m `shiftR` 8)
+    bytes' acc _ 0 =
+      if L.null acc
+        then [0]
+        else acc
+    bytes' !acc !m cnt =
+      bytes' (fromIntegral (m .&. 0xFF) : acc) (m `shiftR` 8) (cnt - 1)
+
 -- | an 8 byte two's complement integer representing milliseconds since epoch
 timestamp :: UTCTime -> P.Put
 timestamp ts = do
@@ -59,9 +96,12 @@ consistency :: Consistency -> P.Put
 consistency cl = _putShortLen $ fromEnum cl
 
 queryFlags :: Query -> P.Put
-queryFlags (UnboundQuery _ _ sm psz pst sc dt) =
+queryFlags (Query _ _ vs sm psz pst sc dt) =
   P.putWord8
-    ((if sm
+    ((if L.null vs
+        then 0
+        else 1) .|.
+     (if sm
         then 2
         else 0) .|.
      maybe 0 (const 0x04) psz .|.
@@ -70,7 +110,27 @@ queryFlags (UnboundQuery _ _ sm psz pst sc dt) =
      maybe 0 (const 0x20) dt)
 
 queryValues :: Query -> P.Put
-queryValues UnboundQuery {} = pure ()
+queryValues (Query _ _ vs _ _ _ _ _) = do
+  _putShortLen $ L.length vs
+  for_ vs typedValue
+
+typedValue :: TypedValue -> P.Put
+-- XXX typedValue (CustomValue n v)
+typedValue NullValue = _putIntLen 0
+typedValue (TextValue str) = _withIntLen $ _utf8 str
+typedValue (BlobValue bs) = _withIntLen bs
+typedValue (BoolValue b) =
+  P.putInt8
+    (if b
+       then 1
+       else 0)
+typedValue (LongValue i) = P.putInt64be i
+typedValue (DecimalValue i) = do
+  let unscaled = Scientific.coefficient i
+  let scale = Scientific.base10Exponent i
+  int $ (fromIntegral $ -scale)
+  varint unscaled
+typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 
 _putShortLen :: Int -> P.Put
 _putShortLen = P.putWord16be . fromIntegral

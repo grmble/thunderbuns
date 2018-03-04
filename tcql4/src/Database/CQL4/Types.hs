@@ -16,6 +16,7 @@ import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Time.Calendar (Day)
 import Data.Time.Clock (DiffTime, UTCTime)
+import Data.UUID (UUID)
 import Data.Word (Word32, Word64)
 
 -- | The frame header is transmitted before the data of the frame
@@ -90,14 +91,15 @@ data Consistency
 -- Note that this does not have query flags - the query flags
 -- are determined by the type of the query (and the parameters
 -- that are present)
-data Query = UnboundQuery -- ^ a query without bound variables
-  { query :: T.Text
-  , consistency :: Consistency
-  , skipMetadata :: Bool
-  , pageSize :: Maybe Int32
-  , pagingState :: Maybe B.ByteString
-  , serialConsistency :: Maybe Consistency
-  , defaultTimestamp :: Maybe UTCTime
+data Query = Query
+  { queryText :: T.Text
+  , queryConsistency :: Consistency
+  , queryValues :: [TypedValue]
+  , querySkipMetadata :: Bool
+  , queryPageSize :: Maybe Int32
+  , queryPagingState :: Maybe B.ByteString
+  , querySerialConsistency :: Maybe Consistency
+  , queryDefaultTimestamp :: Maybe UTCTime
   } deriving (Show, Eq)
 
 -- | Query flags
@@ -239,11 +241,6 @@ data TypedValue
 data IPAddress
   = IPAddressV4 Word32
   | IPAddressV6 (Word32, Word32, Word32, Word32)
-  deriving (Show, Eq)
-
--- | A UUID
-newtype UUID =
-  UUID B.ByteString
   deriving (Show, Eq)
 
 -- | A schema change result or event

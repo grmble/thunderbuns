@@ -1,0 +1,9 @@
+(A) Bind variables
+(B) Tests with all supported datatypes: insert/query
+(C) Handle exception in message dispatcher - make connection invalid. STM should cancel waiters
+(C) Prevent insertion of null values
+(D) Named bind variables
+(D) Batch statements
+(D) Prepared statements
+(E) Authentication (at least plain text)
+(E) Use arrays for result rows and column specs

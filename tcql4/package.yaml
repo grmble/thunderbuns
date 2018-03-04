@@ -36,6 +36,7 @@ dependencies:
 - time
 - unordered-containers
 - unliftio
+- uuid
 # intero needs these here ...
 - hspec
 - QuickCheck

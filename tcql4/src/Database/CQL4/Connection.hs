@@ -34,10 +34,11 @@ import Data.Conduit.Network (AppData, appSink, appSource)
 import qualified Data.HashMap.Strict as M
 import qualified Data.Serialize.Put as P
 import Data.String (fromString)
+import Database.CQL4.Exceptions
 import Database.CQL4.Internal.Protocol
 import Database.CQL4.Types
 import UnliftIO.Concurrent (ThreadId, forkIO, killThread)
-import UnliftIO.Exception (bracket_, onException, throwString)
+import UnliftIO.Exception (bracket_, onException, throwIO)
 import UnliftIO.STM
 
 -- | A Connection is a ReaderT IO with mutable state
@@ -109,13 +110,7 @@ initConnection = do
   msg <- command startup
   case msg of
     ReadyMsg -> pure ()
-    x -> liftIO $ messageError "unexpected response type" x
-
--- | Raise an IOError with a message string for a response
---
--- XXX: custom error type
-messageError :: String -> Message -> IO a
-messageError str msg = throwString (str ++ ": " ++ show msg)
+    x -> throwIO $ messageException "unexpected response type" x
 
 -- | Close the connection.
 --
@@ -165,12 +160,15 @@ command' cmd = do
   sem <- asks connSem
   (sid, rslt) <- streamID
   bracket_ (liftIO $ waitQSem sem) (liftIO $ signalQSem sem) $
-    liftIO $ runConduit
+    liftIO $
+    runConduit
       (sourcePut (cmd sid) .| CC.mapM (logger "request") .| appSink sock)
   pure (sid, rslt)
 
-
 -- ! Dispatch server respones server responses - will never return, must be killed
+--
+-- XXX; on exception, when bugging out, should set this in the connection.
+-- all pendings waits should be errored, all future queries should error immediately
 dispatchResponses :: ConnectionIO ()
 dispatchResponses = do
   sock <- asks connSocket

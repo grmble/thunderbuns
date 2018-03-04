@@ -23,7 +23,7 @@ main = do
 queryLines :: ConnectionIO ()
 queryLines = do
   line <- liftIO $ TIO.getLine
-  rows <- command $ executeQuery $ unboundQuery Quorum line
+  rows <- command $ executeQuery $ makeQuery Quorum line []
   liftIO $ print rows
   -- and loop ...
   queryLines

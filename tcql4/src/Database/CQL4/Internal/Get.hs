@@ -3,6 +3,7 @@ module Database.CQL4.Internal.Get where
 import Control.Monad (replicateM)
 import Data.Bits
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
 import Data.Int (Int16, Int32, Int64)
 import qualified Data.List as L
@@ -20,6 +21,7 @@ import Data.Time.Clock
   , picosecondsToDiffTime
   )
 import Data.Traversable (for)
+import qualified Data.UUID as U
 import Data.Word (Word16)
 import Database.CQL4.Types
 
@@ -123,8 +125,12 @@ string = _shortLen >>= _string
 longString :: G.Get T.Text
 longString = _intLen >>= _string
 
-uuid :: G.Get UUID
-uuid = UUID <$> _blob 16
+uuid :: G.Get U.UUID
+uuid = do
+  bs <- _blob 16
+  case U.fromByteString (LB.fromStrict bs) of
+    Nothing -> fail "UUID.fromByteString"
+    Just x -> pure x
 
 -- | a list of n elements
 --

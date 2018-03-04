@@ -2,7 +2,7 @@
 module Database.CQL4.Internal.Protocol
   ( startup
   , options
-  , unboundQuery
+  , makeQuery
   , executeQuery
   , message
   ) where
@@ -38,30 +38,31 @@ startup sid =
 options :: StreamID -> P.Put
 options sid = CP.frameHeader RequestFrame [] sid OpOptions 0
 
--- | query without bound parameters
-unboundQuery :: Consistency -> T.Text -> Query
-unboundQuery cl cql =
-  UnboundQuery
-    { query = cql
-    , consistency = cl
-    , skipMetadata = False
-    , pageSize = Nothing
-    , pagingState = Nothing
-    , serialConsistency = Nothing
-    , defaultTimestamp = Nothing
+-- | simplified query constructor
+makeQuery :: Consistency -> T.Text -> [TypedValue] -> Query
+makeQuery cl cql vs =
+  Query
+    { queryText = cql
+    , queryConsistency = cl
+    , queryValues = vs
+    , querySkipMetadata = False
+    , queryPageSize = Nothing
+    , queryPagingState = Nothing
+    , querySerialConsistency = Nothing
+    , queryDefaultTimestamp = Nothing
     }
 
 executeQuery :: Query -> StreamID -> P.Put
 executeQuery q sid =
   P.putNested (CP.frameHeader RequestFrame [] sid OpQuery) $ do
-    CP.longString (query q)
-    CP.consistency (consistency q)
+    CP.longString (queryText q)
+    CP.consistency (queryConsistency q)
     CP.queryFlags q
     CP.queryValues q
-    for_ (pageSize q) CP.int
-    for_ (pagingState q) CP.bytes
-    for_ (serialConsistency q) CP.consistency
-    for_ (defaultTimestamp q) CP.timestamp
+    for_ (queryPageSize q) CP.int
+    for_ (queryPagingState q) CP.bytes
+    for_ (querySerialConsistency q) CP.consistency
+    for_ (queryDefaultTimestamp q) CP.timestamp
 
 -- | 
 -- | Get the next message from the server
@@ -213,7 +214,7 @@ schemaChangedMessage = do
       "AGGREGATE" -> sc3 typ ChangeAggregate
       _ -> fail ("Unknown schema change target: " <> T.unpack target)
   pure $ ResultMsg $ QueryResultSchemaChanged sc
-
   where
     sc2 t f = SchemaChange t <$> (f <$> CG.string <*> CG.string)
-    sc3 t f = SchemaChange t <$> (f <$> CG.string <*> CG.string <*> CG.list CG.string)
+    sc3 t f =
+      SchemaChange t <$> (f <$> CG.string <*> CG.string <*> CG.list CG.string)
