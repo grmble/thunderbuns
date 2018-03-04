@@ -68,13 +68,14 @@ executeQuery q sid =
 message :: G.Get (FrameHeader, Message)
 message = do
   h <- CG.frameHeader
-  G.label "message" $ G.isolate (fromIntegral $ frameLength h) $
+  G.label "message" $
+    G.isolate (fromIntegral $ frameLength h) $
     case frameOpCode h of
-      OpError -> (h,) <$> errorMessage
+      OpError -> (h, ) <$> errorMessage
       OpReady -> pure (h, ReadyMsg)
-      OpAuthenticate -> (h,) <$> AuthenticateMsg <$> CG.string
-      OpSupported -> (h,) <$> SupportedMsg <$> CG.strmap (CG.list CG.string)
-      OpResult -> (h,) <$> resultMessage
+      OpAuthenticate -> (h, ) . AuthenticateMsg <$> CG.string
+      OpSupported -> (h, ) . SupportedMsg <$> CG.strmap (CG.list CG.string)
+      OpResult -> (h, ) <$> resultMessage
       x -> fail ("not implemented: " ++ show x)
 
 resultMessage :: G.Get Message
@@ -82,32 +83,35 @@ resultMessage = do
   kind <- CG.int
   case kind of
     0x0001 -> pure $ ResultMsg QueryResultVoid
-    0x0002 -> do
-      flags <- CG.metadataFlags
-      colcnt <- fromIntegral <$> CG.int
-      ps <-
-        if HasMorePages `L.elem` flags
-          then Just <$> (CG._shortLen >>= CG._blob)
-          else pure Nothing
-      -- XXX: when ?
-      if NoMetadata `L.elem` flags
-        -- would have to pass it in from some prior prepare result
-        -- can't parse the result rows without knowing the format
-        then fail "NoMetadata not supported"
-        else pure ()
-      gt <-
-        if GlobalTableSpec `L.elem` flags
-          then Just <$> ((,) <$> CG.string <*> CG.string)
-          else pure Nothing
-      colSpecs <- replicateM colcnt (CG.columnType gt)
-      rowcnt <- fromIntegral <$> CG.int
-      rows <-
-        replicateM rowcnt (for colSpecs (\x -> CG.typedBytes (columnType x)))
-      pure $ ResultMsg $ QueryResultRows colcnt gt ps colSpecs rowcnt rows
+    0x0002 -> resultRowsMessage
     0x0003 -> do
       ks <- CG.string
       pure $ ResultMsg $ QueryResultKeyspace ks
+    0x0005 -> schemaChangedMessage
     _ -> fail ("Unknown result message kind: " <> show kind)
+
+resultRowsMessage :: G.Get Message
+resultRowsMessage = do
+  flags <- CG.metadataFlags
+  colcnt <- fromIntegral <$> CG.int
+  ps <-
+    if HasMorePages `L.elem` flags
+      then Just <$> (CG._shortLen >>= CG._blob)
+      else pure Nothing
+      -- XXX: when ?
+  if NoMetadata `L.elem` flags
+        -- would have to pass it in from some prior prepare result
+        -- can't parse the result rows without knowing the format
+    then fail "NoMetadata not supported"
+    else pure ()
+  gt <-
+    if GlobalTableSpec `L.elem` flags
+      then Just <$> ((,) <$> CG.string <*> CG.string)
+      else pure Nothing
+  colSpecs <- replicateM colcnt (CG.columnType gt)
+  rowcnt <- fromIntegral <$> CG.int
+  rows <- replicateM rowcnt (for colSpecs (CG.typedBytes . columnType))
+  pure $ ResultMsg $ QueryResultRows colcnt gt ps colSpecs rowcnt rows
 
 errorMessage :: G.Get Message
 errorMessage = do
@@ -189,3 +193,27 @@ errorMessage = do
     _epString n = (n, ) <$> CG.string
     _epBool :: T.Text -> G.Get (T.Text, T.Text)
     _epBool n = _ep n show' CG.bool
+
+schemaChangedMessage :: G.Get Message
+schemaChangedMessage = do
+  typStr <- CG.string
+  typ <-
+    case typStr of
+      "CREATED" -> pure ChangeCreated
+      "UPDATED" -> pure ChangeUpdated
+      "DROPPED" -> pure ChangeDropped
+      _ -> fail ("Unknown change type: " <> T.unpack typStr)
+  target <- CG.string
+  sc <-
+    case target of
+      "KEYSPACE" -> SchemaChange typ . ChangeKeyspace <$> CG.string
+      "TABLE" -> sc2 typ ChangeTable
+      "TYPE" -> sc2 typ ChangeType
+      "FUNCTION" -> sc3 typ ChangeFunction
+      "AGGREGATE" -> sc3 typ ChangeAggregate
+      _ -> fail ("Unknown schema change target: " <> T.unpack target)
+  pure $ ResultMsg $ QueryResultSchemaChanged sc
+
+  where
+    sc2 t f = SchemaChange t <$> (f <$> CG.string <*> CG.string)
+    sc3 t f = SchemaChange t <$> (f <$> CG.string <*> CG.string <*> CG.list CG.string)

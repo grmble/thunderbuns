@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+
 {- | CQL Types common for get and put
 
 Note that the values of the Enums are highly magical -
@@ -146,7 +147,7 @@ data QueryResult
                     , resultRows :: [[TypedValue]] }
   | QueryResultKeyspace T.Text
   | QueryResultPrepared -- XXX implement me
-  | QueryResultSchemaChanged -- XXX implement me
+  | QueryResultSchemaChanged SchemaChange
   deriving (Show, Eq)
 
 data ColumnSpec = ColumnSpec
@@ -244,4 +245,35 @@ data IPAddress
 newtype UUID =
   UUID B.ByteString
   deriving (Show, Eq)
--- | a 16 bytes long uuid
+
+-- | A schema change result or event
+data SchemaChange = SchemaChange
+  { changeType :: ChangeType
+  , changeObject :: ChangeObject
+  } deriving (Show, Eq)
+
+-- | Change type - what happened?
+data ChangeType
+  = ChangeCreated
+  | ChangeUpdated
+  | ChangeDropped
+  deriving (Enum, Show, Eq)
+
+-- | The changed object in a schema change
+--
+-- Combines change_target and change_options from the protocl spec.
+-- One value is the keyspace, 2 the keyspace and object, if there is a list
+-- it's one string for each argument
+data ChangeObject
+  = ChangeKeyspace T.Text
+  | ChangeTable T.Text
+                T.Text
+  | ChangeType T.Text
+               T.Text
+  | ChangeFunction T.Text
+                   T.Text
+                   [T.Text]
+  | ChangeAggregate T.Text
+                    T.Text
+                    [T.Text]
+  deriving (Show, Eq)
