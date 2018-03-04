@@ -37,7 +37,7 @@ import Data.String (fromString)
 import Database.CQL4.Internal.Protocol
 import Database.CQL4.Types
 import UnliftIO.Concurrent (ThreadId, forkIO, killThread)
-import UnliftIO.Exception (onException, throwString)
+import UnliftIO.Exception (bracket_, onException, throwString)
 import UnliftIO.STM
 
 -- | A Connection is a ReaderT IO with mutable state
@@ -152,13 +152,23 @@ streamID = do
 -- | Send a command frame over the socket
 command :: (StreamID -> P.Put) -> ConnectionIO Message
 command cmd = do
+  (_, rslt) <- command' cmd
+  atomically (takeTMVar rslt)
+
+-- | Send a command frame over the socket, but do not wait.
+--
+-- It returns the TMVar insteead that can be waited on.
+command' :: (StreamID -> P.Put) -> ConnectionIO (StreamID, TMVar Message)
+command' cmd = do
   sock <- asks connSocket
   logger <- asks connLogger
+  sem <- asks connSem
   (sid, rslt) <- streamID
-  liftIO $
-    runConduit
+  bracket_ (liftIO $ waitQSem sem) (liftIO $ signalQSem sem) $
+    liftIO $ runConduit
       (sourcePut (cmd sid) .| CC.mapM (logger "request") .| appSink sock)
-  liftIO $ atomically (takeTMVar rslt)
+  pure (sid, rslt)
+
 
 -- ! Dispatch server respones server responses - will never return, must be killed
 dispatchResponses :: ConnectionIO ()

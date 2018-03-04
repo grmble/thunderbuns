@@ -14,6 +14,7 @@ main :: IO ()
 main = do
   hn <- head <$> getArgs
   runTCPClient (clientSettings 9042 $ fromString hn) $ \app -> do
+    putStrLn "Have tcp socket, will initialize"
     bracket
       (connection' hexdumpLogger app)
       (runReaderT closeConnection)
