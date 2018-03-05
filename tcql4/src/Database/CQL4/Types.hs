@@ -141,12 +141,12 @@ data Message
 -- | QueryResult represents the different result types for a query
 data QueryResult
   = QueryResultVoid -- ^ query with empty/no result
-  | QueryResultRows { resultColumnsCount :: Int
-                    , resultGlobalTableSpec :: Maybe (T.Text, T.Text)
-                    , resultPagingState :: Maybe B.ByteString
-                    , resultColumns :: [ColumnSpec]
-                    , resultRowsCount :: Int
-                    , resultRows :: [[TypedValue]] }
+  | QueryResultRows { _resultColumnsCount :: Int
+                    , _resultGlobalTableSpec :: Maybe (T.Text, T.Text)
+                    , _resultPagingState :: Maybe B.ByteString
+                    , _resultColumns :: [ColumnSpec]
+                    , _resultRowsCount :: Int
+                    , _resultRows :: [[TypedValue]] }
   | QueryResultKeyspace T.Text
   | QueryResultPrepared -- XXX implement me
   | QueryResultSchemaChanged SchemaChange

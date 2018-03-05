@@ -66,11 +66,11 @@ computeVarint n =
   let nbs = natBytes' [] (abs n)
       bs = bytes' [] n (L.length nbs)
       mb = fromIntegral (head bs) :: Int8
-   in case (n < 0, mb < 0) of
-        (True, True) -> bs
-        (True, False) -> 0xff : bs
-        (False, True) -> 0 : bs
-        (False, False) -> bs
+  in case (n < 0, mb < 0) of
+       (True, True) -> bs
+       (True, False) -> 0xff : bs
+       (False, True) -> 0 : bs
+       (False, False) -> bs
   where
     natBytes' :: [Word8] -> Integer -> [Word8]
     natBytes' acc 0 =
@@ -128,7 +128,7 @@ typedValue (LongValue i) = P.putInt64be i
 typedValue (DecimalValue i) = do
   let unscaled = Scientific.coefficient i
   let scale = Scientific.base10Exponent i
-  int $ (fromIntegral $ -scale)
+  int $ fromIntegral (-scale)
   varint unscaled
 typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 

@@ -17,8 +17,8 @@ main = do
     putStrLn "Have tcp socket, will initialize"
     bracket
       (connection' hexdumpLogger app)
-      (runReaderT closeConnection)
-      (runReaderT queryLines)
+      (runConnection' closeConnection)
+      (runConnection' queryLines)
 
 queryLines :: ConnectionIO ()
 queryLines = do

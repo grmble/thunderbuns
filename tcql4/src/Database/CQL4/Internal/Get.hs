@@ -40,12 +40,12 @@ frameHeader = do
   l' <- G.getInt32be
   pure
     FrameHeader
-      { frameVersion = v
-      , frameFlags = fs
-      , frameStream = s'
-      , frameOpCode = toEnum $ fromIntegral c'
-      , frameLength = l'
-      }
+    { frameVersion = v
+    , frameFlags = fs
+    , frameStream = s'
+    , frameOpCode = toEnum $ fromIntegral c'
+    , frameLength = l'
+    }
   where
     foldFlags f' e acc =
       if testBit f' e

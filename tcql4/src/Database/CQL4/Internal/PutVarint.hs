@@ -48,4 +48,4 @@ computeUnsignedVIntSize w
   -- with 1 to ensure magnitude <= 63
  =
   let magnitude = countLeadingZeros (w .|. 1)
-   in fromIntegral $ (639 - magnitude * 9) `shiftR` 6
+  in fromIntegral $ (639 - magnitude * 9) `shiftR` 6

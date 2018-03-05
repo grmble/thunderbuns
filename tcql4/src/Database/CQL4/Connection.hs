@@ -11,18 +11,33 @@ the ID of their command.
 
 So the connection abstraction also allows to wait for the response
 to a command.
+
+The module distinguished protocol errors and user errors.
+Both are of type CQLException, but protocoll errors will be thrown.
+This is because protocol errors will leave the socket unusable, e.g
+a failing handshare. User errors can be recovered - e.g. an error message
+for a cql statement with an error.
+
+By using `runConnection` instead of `runConnection`, all errors
+will be thrown as exceptions.
 -}
 module Database.CQL4.Connection
   ( ConnectionIO
   , Connection(..)
   , connection
   , connection'
+  , runConnection
+  , runConnection'
   , hexdumpLogger
   , closeConnection
   , command
+  , queryResult
+  , unitResult
+  , resultRows
   ) where
 
 import Control.Concurrent.QSem
+import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Reader (ReaderT, ask, asks, liftIO, runReaderT)
 import qualified Data.ByteString as B
 import Data.ByteString.Hexdump (hexdump)
@@ -31,6 +46,7 @@ import Data.Conduit ((.|), runConduit)
 import Data.Conduit.Cereal (conduitGet2, sourcePut)
 import qualified Data.Conduit.Combinators as CC
 import Data.Conduit.Network (AppData, appSink, appSource)
+import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import qualified Data.Serialize.Put as P
 import Data.String (fromString)
@@ -41,8 +57,20 @@ import UnliftIO.Concurrent (ThreadId, forkIO, killThread)
 import UnliftIO.Exception (bracket_, onException, throwIO)
 import UnliftIO.STM
 
--- | A Connection is a ReaderT IO with mutable state
-type ConnectionIO = ReaderT Connection IO
+-- | A Connection is a ReaderT with mutable state + ExceptT
+type ConnectionIO = ReaderT Connection (ExceptT CQLException IO)
+
+-- | Execute the ConnectionIO monad
+runConnection :: ConnectionIO a -> Connection -> IO (Either CQLException a)
+runConnection m c = runExceptT $ runReaderT m c
+
+-- | Execute the ConnectionIO monad, throwing an exception on error
+runConnection' :: ConnectionIO a -> Connection -> IO a
+runConnection' m c = do
+  ea <- runConnection m c
+  case ea of
+    Left ex -> throwIO ex
+    Right a -> pure a
 
 -- | The data inside a ConnectionIO ReaderT
 data Connection = Connection
@@ -69,7 +97,7 @@ type Logger = String -> B.ByteString -> IO B.ByteString
 -- Note that this allocates resources, you should bracket
 -- this call with `closeConnection`.
 connection :: AppData -> IO Connection
-connection sock = connection' (const pure) sock
+connection = connection' (const pure)
 
 -- | Connection constructor that takes a logger.
 --
@@ -80,16 +108,16 @@ connection' logger sock = do
   pVar <- newTVarIO M.empty
   dVar <- newEmptyTMVarIO
   qsem <- newQSem 1
-  let conn = (Connection sock qsem idVar pVar dVar logger)
+  let conn = Connection sock qsem idVar pVar dVar logger
   onException
-    (runReaderT initConnection conn *> pure conn)
-    (runReaderT closeConnection conn)
+    (runConnection' initConnection conn)
+    (runConnection' closeConnection conn)
 
 -- | Log a hexdump of the request/response
 hexdumpLogger :: Logger
 hexdumpLogger msg bs = do
   LB.putStr
-    ((fromString msg) `LB.append` "\n" `LB.append` (hexdump (LB.fromStrict bs)))
+    (fromString msg `LB.append` "\n" `LB.append` hexdump (LB.fromStrict bs))
   pure bs
 
 -- | Initialize the connection.
@@ -101,15 +129,15 @@ hexdumpLogger msg bs = do
 -- connection from multiple threads.
 --
 -- This will throw an error if there is a protocol problem
--- (e.g. if the server wants authentication)
-initConnection :: ConnectionIO ()
+-- (e.g. if the server wants authentication).
+initConnection :: ConnectionIO Connection
 initConnection = do
   cdata <- ask
-  tid <- liftIO $ forkIO $ runReaderT dispatchResponses cdata
+  tid <- liftIO $ forkIO $ runConnection' dispatchResponses cdata
   liftIO $ atomically $ putTMVar (connDispatcher cdata) tid
   msg <- command startup
   case msg of
-    ReadyMsg -> pure ()
+    ReadyMsg -> pure cdata
     x -> throwIO $ messageException "unexpected response type" x
 
 -- | Close the connection.
@@ -130,8 +158,8 @@ streamID :: ConnectionIO (StreamID, TMVar Message)
 streamID = do
   idVar <- asks connStreamID
   pendingVar <- asks connPending
-  p <- liftIO $ newEmptyTMVarIO
-  let go pending sid = do
+  p <- liftIO newEmptyTMVarIO
+  let go pending sid =
         if M.member sid pending
           then go pending (max 0 (1 + sid))
           else do
@@ -152,18 +180,36 @@ command cmd = do
 
 -- | Send a command frame over the socket, but do not wait.
 --
--- It returns the TMVar insteead that can be waited on.
+-- It returns the TMVar instead that can be waited on.
 command' :: (StreamID -> P.Put) -> ConnectionIO (StreamID, TMVar Message)
 command' cmd = do
   sock <- asks connSocket
   logger <- asks connLogger
   sem <- asks connSem
   (sid, rslt) <- streamID
-  bracket_ (liftIO $ waitQSem sem) (liftIO $ signalQSem sem) $
-    liftIO $
+  liftIO $
+    bracket_ (waitQSem sem) (signalQSem sem) $
     runConduit
       (sourcePut (cmd sid) .| CC.mapM (logger "request") .| appSink sock)
   pure (sid, rslt)
+
+-- | Get the QueryResult from the message.
+--
+-- Any other message type is an error.
+queryResult :: Message -> ConnectionIO QueryResult
+queryResult msg =
+  case msg of
+    ResultMsg x -> pure x
+    x -> throwError $ messageException "invalid response to query command" x
+
+-- | Get the actual result rows
+--
+-- Used as `command .... >>= queryResult >>= resultRows`
+resultRows :: QueryResult -> ConnectionIO [[TypedValue]]
+resultRows = pure . _resultRows
+
+unitResult :: Message -> ConnectionIO ()
+unitResult msg = queryResult msg $> ()
 
 -- ! Dispatch server respones server responses - will never return, must be killed
 --
@@ -176,7 +222,7 @@ dispatchResponses = do
   pendingVar <- asks connPending
   let handleMessage (h, msg) =
         atomically $ do
-          let sid = (frameStream h)
+          let sid = frameStream h
           pending <- readTVar pendingVar
           case M.lookup sid pending of
             Nothing

@@ -42,15 +42,15 @@ options sid = CP.frameHeader RequestFrame [] sid OpOptions 0
 makeQuery :: Consistency -> T.Text -> [TypedValue] -> Query
 makeQuery cl cql vs =
   Query
-    { queryText = cql
-    , queryConsistency = cl
-    , queryValues = vs
-    , querySkipMetadata = False
-    , queryPageSize = Nothing
-    , queryPagingState = Nothing
-    , querySerialConsistency = Nothing
-    , queryDefaultTimestamp = Nothing
-    }
+  { queryText = cql
+  , queryConsistency = cl
+  , queryValues = vs
+  , querySkipMetadata = False
+  , queryPageSize = Nothing
+  , queryPagingState = Nothing
+  , querySerialConsistency = Nothing
+  , queryDefaultTimestamp = Nothing
+  }
 
 executeQuery :: Query -> StreamID -> P.Put
 executeQuery q sid =
