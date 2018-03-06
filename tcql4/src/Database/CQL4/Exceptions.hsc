@@ -4,7 +4,7 @@
 module Database.CQL4.Exceptions where
 
 import Data.Monoid ((<>))
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 import GHC.Stack (callStack, prettySrcLoc)
 import GHC.Stack.Types (CallStack, HasCallStack, getCallStack)
 import UnliftIO.Exception

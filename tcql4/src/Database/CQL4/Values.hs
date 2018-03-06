@@ -8,7 +8,7 @@ module Database.CQL4.Values where
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Database.CQL4.Exceptions
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 
 class IsCQLValue a where
   toValue :: a -> TypedValue

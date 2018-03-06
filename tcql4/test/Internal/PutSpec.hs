@@ -2,7 +2,7 @@ module Internal.PutSpec where
 
 import qualified Data.Serialize.Put as P
 import Database.CQL4.Internal.Put
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 import Test.Hspec
 
 main :: IO ()

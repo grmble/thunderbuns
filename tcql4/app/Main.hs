@@ -6,7 +6,7 @@ import Data.String (fromString)
 import qualified Data.Text.IO as TIO
 import Database.CQL4.Connection
 import Database.CQL4.Internal.Protocol
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 import System.Environment
 import UnliftIO.Exception (bracket)
 

@@ -21,7 +21,6 @@ description:         Please see the README on Github at <https://github.com/grmb
 # base 4.10 is stack lts 10 aka GHC 8.2.2
 dependencies:
 - base >= 4.10 && < 5
-- array
 - bytestring
 - cereal
 - cereal-conduit
@@ -37,9 +36,10 @@ dependencies:
 - unordered-containers
 - unliftio
 - uuid
+- vector
 # intero needs these here ...
-- hspec
-- QuickCheck
+# - hspec
+# - QuickCheck
 
 library:
   source-dirs: src
@@ -65,6 +65,8 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - tcql4
+    - hspec
+    - QuickCheck
 
 
 #

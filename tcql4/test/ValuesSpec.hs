@@ -12,7 +12,7 @@ import qualified Data.UUID as U
 import qualified Data.UUID.V4 as V4
 import Database.CQL4.Connection
 import Database.CQL4.Internal.Protocol
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 import Database.CQL4.Values
 import System.Environment (lookupEnv)
 import Test.Hspec

@@ -7,7 +7,7 @@ they are the actual codes on the wire.
 
 No rearranging ...
 -}
-module Database.CQL4.Types where
+module Database.CQL4.Internal.Types where
 
 import qualified Data.ByteString as B
 import qualified Data.HashMap.Strict as M

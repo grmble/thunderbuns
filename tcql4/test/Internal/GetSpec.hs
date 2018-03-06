@@ -2,7 +2,7 @@ module Internal.GetSpec where
 
 import qualified Data.Serialize.Get as G
 import Database.CQL4.Internal.Get
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 import Test.Hspec
 
 main :: IO ()

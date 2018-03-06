@@ -19,7 +19,7 @@ import qualified Data.Text as T
 import Data.Traversable (for)
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 
 -- | Put the startup message
 --

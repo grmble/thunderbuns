@@ -52,7 +52,7 @@ import qualified Data.Serialize.Put as P
 import Data.String (fromString)
 import Database.CQL4.Exceptions
 import Database.CQL4.Internal.Protocol
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 import UnliftIO.Concurrent (ThreadId, forkIO, killThread)
 import UnliftIO.Exception (bracket_, onException, throwIO)
 import UnliftIO.STM

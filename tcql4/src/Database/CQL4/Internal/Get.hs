@@ -23,7 +23,7 @@ import Data.Time.Clock
 import Data.Traversable (for)
 import qualified Data.UUID as U
 import Data.Word (Word16)
-import Database.CQL4.Types
+import Database.CQL4.Internal.Types
 
 frameHeader :: G.Get FrameHeader
 frameHeader = do
