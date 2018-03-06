@@ -19,6 +19,7 @@ import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
 import qualified Data.Text as T
 import Data.Traversable (for)
+import qualified Data.Vector as V
 import Database.CQL4.Exceptions
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
@@ -80,9 +81,9 @@ queryResult x =
 -- | Get the actual result rows
 --
 -- Any QueryResult will, it's just an empty list if it does not have any rows
-resultRows :: QueryResult -> ConnectionIO [[TypedValue]]
+resultRows :: QueryResult -> ConnectionIO [V.Vector TypedValue]
 resultRows (QueryResultRows rr) = pure (rrRows rr)
-resultRows _ = pure []
+resultRows _ = pure mempty
 
 -- | Get the result rows object
 --
@@ -211,7 +212,7 @@ resultRowsMessage = do
     if GlobalTableSpec `L.elem` flags
       then Just <$> ((,) <$> CG.string <*> CG.string)
       else pure Nothing
-  colSpecs <- replicateM colcnt (CG.columnType gt)
+  colSpecs <- V.replicateM colcnt (CG.columnType gt)
   rowcnt <- fromIntegral <$> CG.int
   rows <- replicateM rowcnt (for colSpecs (CG.typedBytes . columnType))
   pure $

@@ -4,13 +4,17 @@ When it grows up, it wants to be a Cassandra CQL4 Driver
 
 Right now it can
 
-* Issue statements without bind variables
-* Decode the results ... almost, sometimes
+* Execute CQL queries with positional bind variables
+* Decode the results
 
-It can't
+It can't yet
 
-* use options like compression codes
-* use password protected connections
-* use bind variables
 * prepare statements
 * batch statements
+* use named bind variables
+* use options like compression codes
+* use password protected connections
+
+The above list is roughly in order of personal priority.
+Also it may take a while - the plan is to do some dogfooding
+with the current api before tackling these features.

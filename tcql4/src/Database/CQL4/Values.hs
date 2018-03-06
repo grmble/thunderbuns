@@ -5,12 +5,16 @@ The module provides functions to convert between TypedValue
 -}
 module Database.CQL4.Values where
 
-import qualified Data.ByteString.Lazy as LB
+import Control.Monad (when)
+import Control.Monad.Except (liftEither, throwError)
+import Control.Monad.State (StateT, evalStateT, get, put)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import qualified Data.UUID as U
+import qualified Data.Vector as V
 import Database.CQL4.Exceptions
-import Database.CQL4.Internal.Types
+import Database.CQL4.Protocol
+import Database.CQL4.Types
 
 class IsCQLValue a where
   toValue :: a -> TypedValue
@@ -44,4 +48,36 @@ instance IsCQLValue U.UUID where
   toValue = UUIDValue
   fromValue (UUIDValue uu) = Right uu
   fromValue x = Left $ fromValueException "UUID" x
--- XXX needs more cowbell
+
+-- XXX need more types ...
+-- | Helper monad to extract values from a result set
+--
+-- It maintains a current slice of the rows values,
+-- allowing you to take one value after the other using
+-- `extract`.
+type ValueExtractorIO = StateT (V.Vector TypedValue) ConnectionIO
+
+-- | Extract the next value from the result row
+extract :: IsCQLValue a => ValueExtractorIO a
+extract = do
+  vs <- get
+  when (V.null vs) $ throwError $ messageException "fvIO.empty"
+  a <- liftEither $ fromValue (V.head vs)
+  put (V.slice 1 (V.length vs - 1) vs)
+  pure a
+
+-- | Extract the values from a row.
+extractRow :: V.Vector TypedValue -> ValueExtractorIO a -> ConnectionIO a
+extractRow = flip evalStateT
+
+-- | Error if the result is not exactly one row
+--
+-- extractRow should be called using traverse/for over the result set.
+-- Extract single row asserts that the result set consists of exactly
+-- one row, then calls extractRow on it.
+extractSingleRow ::
+     [V.Vector TypedValue] -> ValueExtractorIO a -> ConnectionIO a
+extractSingleRow [v] m = extractRow v m
+extractSingleRow [] _ = throwError $ messageException "extractSingleRow.empty"
+extractSingleRow _ _ =
+  throwError $ messageException "extractSingleRow.moreThanOneRow"

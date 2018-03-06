@@ -1,6 +1,5 @@
 module ValuesSpec where
 
-import Control.Monad.Except (throwError)
 import Control.Monad.Reader (liftIO)
 import Data.Conduit.Network
 import Data.Foldable (for_)
@@ -65,7 +64,7 @@ writeTextValues ts = do
   useTest
   let cql = "insert into test_text (pk, value) values (?, ?)"
   for ts $ \x -> do
-    uuid <- liftIO $ V4.nextRandom
+    uuid <- liftIO V4.nextRandom
     execute One cql [toValue uuid, toValue x]
     pure (uuid, x)
 
@@ -73,10 +72,7 @@ readTextValue :: U.UUID -> ConnectionIO T.Text
 readTextValue uu = do
   let cql = "select value from test_text where pk = ?"
   rows <- executeQuery One cql [toValue uu]
-  -- XXX: have fromValue return ConnectionIO
-  case fromValue $ head $ head rows of
-    Left ex -> throwError ex
-    Right x -> pure x
+  extractSingleRow rows extract
 
 spec :: Spec
 spec =

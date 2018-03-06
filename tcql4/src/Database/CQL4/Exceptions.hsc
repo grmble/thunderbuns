@@ -1,10 +1,13 @@
 {-# LANGUAGE CPP #-}
 
 -- | CQL Exceptions
+--
+-- It could be in Types.hs, but it needs CPP, so I rather have a short file.
 module Database.CQL4.Exceptions where
 
 import Data.Monoid ((<>))
 import Database.CQL4.Internal.Types
+import Database.CQL4.Types
 import GHC.Stack (callStack, prettySrcLoc)
 import GHC.Stack.Types (CallStack, HasCallStack, getCallStack)
 import UnliftIO.Exception

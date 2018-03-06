@@ -32,6 +32,7 @@ import Data.Conduit.Network (AppData)
 import qualified Data.HashMap.Strict as M
 import Data.String (fromString)
 import qualified Data.Text as T
+import qualified Data.Vector as V
 import Database.CQL4.Exceptions
 import Database.CQL4.Internal.Protocol
 import Database.CQL4.Internal.Types
@@ -125,7 +126,7 @@ execute cl cql vs = do
 
 -- | Execute a CQL query and return the results
 executeQuery ::
-     Consistency -> T.Text -> [TypedValue] -> ConnectionIO [[TypedValue]]
+     Consistency -> T.Text -> [TypedValue] -> ConnectionIO [V.Vector TypedValue]
 executeQuery cl cql vs = do
   msg <- command (putQuery $ makeQuery cl cql vs)
   queryResult msg >>= resultRows

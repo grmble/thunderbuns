@@ -1,6 +1,6 @@
 module Main where
 
-import Control.Monad.Reader (liftIO, runReaderT)
+import Control.Monad.Reader (liftIO)
 import Data.Conduit.Network
 import Data.Foldable (for_)
 import Data.String (fromString)
@@ -23,7 +23,7 @@ main = do
 
 queryLines :: ConnectionIO ()
 queryLines = do
-  line <- liftIO $ TIO.getLine
+  line <- liftIO TIO.getLine
   rows <- executeQuery One line []
   liftIO $ for_ rows print
   -- and loop ...
