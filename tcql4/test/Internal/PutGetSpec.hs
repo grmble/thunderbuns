@@ -6,7 +6,6 @@ import Data.String
 import Data.Text
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
-import Database.CQL4.Internal.Types
 import Test.Hspec
 import Test.QuickCheck
 

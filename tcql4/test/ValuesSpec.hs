@@ -11,8 +11,8 @@ import Data.Traversable (for)
 import qualified Data.UUID as U
 import qualified Data.UUID.V4 as V4
 import Database.CQL4.Connection
-import Database.CQL4.Internal.Protocol
-import Database.CQL4.Internal.Types
+import Database.CQL4.Protocol
+import Database.CQL4.Types
 import Database.CQL4.Values
 import System.Environment (lookupEnv)
 import Test.Hspec
@@ -50,15 +50,15 @@ createKSAndTables = do
           "with replication = { 'class': 'SimpleStrategy', 'replication_factor': 1 } " <>
           "and durable_writes = false"
         , "use test"
-        , "create table test_text (pk uuid, value text, primary key (pk))"
-        , "create table test_int (pk uuid, value int, primary key (pk))"
-        , "create table test_varint (pk uuid, value varint, primary key (pk))"
-        , "create table test_decimal (pk uuid, value decimal, primary key (pk))"
+        , "create table if not exists test_text (pk uuid, value text, primary key (pk))"
+        , "create table if not exists test_int (pk uuid, value int, primary key (pk))"
+        , "create table if not exists test_varint (pk uuid, value varint, primary key (pk))"
+        , "create table if not exists test_decimal (pk uuid, value decimal, primary key (pk))"
         ]
-  for_ cql (\c -> command $ executeQuery $ makeQuery One c [])
+  for_ cql (\c -> execute One c [])
 
 useTest :: ConnectionIO ()
-useTest = command (executeQuery $ makeQuery One "use test" []) >>= unitResult
+useTest = execute One "use test" []
 
 writeTextValues :: [T.Text] -> ConnectionIO [(U.UUID, T.Text)]
 writeTextValues ts = do
@@ -66,16 +66,13 @@ writeTextValues ts = do
   let cql = "insert into test_text (pk, value) values (?, ?)"
   for ts $ \x -> do
     uuid <- liftIO $ V4.nextRandom
-    command (executeQuery $ makeQuery One cql [UUIDValue uuid, TextValue x]) >>=
-      unitResult
+    execute One cql [toValue uuid, toValue x]
     pure (uuid, x)
 
 readTextValue :: U.UUID -> ConnectionIO T.Text
 readTextValue uu = do
   let cql = "select value from test_text where pk = ?"
-  rows <-
-    command (executeQuery $ makeQuery One cql [UUIDValue uu]) >>= queryResult >>=
-    resultRows
+  rows <- executeQuery One cql [toValue uu]
   -- XXX: have fromValue return ConnectionIO
   case fromValue $ head $ head rows of
     Left ex -> throwError ex

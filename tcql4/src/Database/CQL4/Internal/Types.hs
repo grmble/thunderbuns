@@ -18,6 +18,7 @@ import Data.Time.Calendar (Day)
 import Data.Time.Clock (DiffTime, UTCTime)
 import Data.UUID (UUID)
 import Data.Word (Word32, Word64)
+import Database.CQL4.Types
 
 -- | The frame header is transmitted before the data of the frame
 data FrameHeader = FrameHeader
@@ -71,21 +72,6 @@ data OpCode
   | OpAuthSuccess
   deriving (Show, Eq, Enum)
 
--- | Cassandra consistency level
-data Consistency
-  = Any
-  | One
-  | Two
-  | Three
-  | Quorum
-  | All
-  | LocalQuorum
-  | EachQuorum
-  | Serial
-  | LocalSerial
-  | LocalOne
-  deriving (Show, Eq, Enum)
-
 -- | A CQL query
 --
 -- Note that this does not have query flags - the query flags
@@ -129,28 +115,37 @@ data MetadataFlag
 --
 -- Only messages that can be received by the client are relevant here
 data Message
-  = ErrorMsg { errorCode :: Int32
-             , errorMsg :: T.Text
-             , errorParams :: [(T.Text, T.Text)] }
+  = ErrorMsg ErrorMsgT
   | ReadyMsg
   | AuthenticateMsg T.Text
   | SupportedMsg (M.HashMap T.Text [T.Text])
   | ResultMsg QueryResult
   deriving (Show, Eq)
 
+data ErrorMsgT = ErrorMsgT
+  { errorCode :: Int32
+  , errorMsg :: T.Text
+  , errorParams :: [(T.Text, T.Text)]
+  } deriving (Show, Eq)
+
 -- | QueryResult represents the different result types for a query
 data QueryResult
   = QueryResultVoid -- ^ query with empty/no result
-  | QueryResultRows { _resultColumnsCount :: Int
-                    , _resultGlobalTableSpec :: Maybe (T.Text, T.Text)
-                    , _resultPagingState :: Maybe B.ByteString
-                    , _resultColumns :: [ColumnSpec]
-                    , _resultRowsCount :: Int
-                    , _resultRows :: [[TypedValue]] }
+  | QueryResultRows ResultRows
   | QueryResultKeyspace T.Text
   | QueryResultPrepared -- XXX implement me
   | QueryResultSchemaChanged SchemaChange
   deriving (Show, Eq)
+
+-- | Result Rows in a query result
+data ResultRows = ResultRows
+  { rrColumnsCount :: Int
+  , rrGlobalTableSpec :: Maybe (T.Text, T.Text)
+  , rrPagingState :: Maybe B.ByteString
+  , rrColumns :: [ColumnSpec]
+  , rrCount :: Int
+  , rrRows :: [[TypedValue]]
+  } deriving (Show, Eq)
 
 data ColumnSpec = ColumnSpec
   { tableSpec :: (T.Text, T.Text)

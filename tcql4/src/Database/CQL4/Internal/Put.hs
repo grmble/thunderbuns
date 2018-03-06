@@ -16,6 +16,7 @@ import Data.UUID as U
 import Data.Word
 import qualified Database.CQL4.Internal.Get as CG
 import Database.CQL4.Internal.Types
+import Database.CQL4.Types
 
 frameHeader :: FrameVersion -> [FrameFlag] -> StreamID -> OpCode -> Int -> P.Put
 frameHeader v fs i c len = do

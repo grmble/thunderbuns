@@ -21,44 +21,25 @@ for a cql statement with an error.
 By using `runConnection` instead of `runConnection`, all errors
 will be thrown as exceptions.
 -}
-module Database.CQL4.Connection
-  ( ConnectionIO
-  , Connection(..)
-  , connection
-  , connection'
-  , runConnection
-  , runConnection'
-  , hexdumpLogger
-  , closeConnection
-  , command
-  , queryResult
-  , unitResult
-  , resultRows
-  ) where
+module Database.CQL4.Connection where
 
 import Control.Concurrent.QSem
-import Control.Monad.Except (ExceptT, runExceptT, throwError)
-import Control.Monad.Reader (ReaderT, ask, asks, liftIO, runReaderT)
-import qualified Data.ByteString as B
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (ask, asks, liftIO, runReaderT)
 import Data.ByteString.Hexdump (hexdump)
 import qualified Data.ByteString.Lazy as LB
-import Data.Conduit ((.|), runConduit)
-import Data.Conduit.Cereal (conduitGet2, sourcePut)
-import qualified Data.Conduit.Combinators as CC
-import Data.Conduit.Network (AppData, appSink, appSource)
-import Data.Functor (($>))
+import Data.Conduit.Network (AppData)
 import qualified Data.HashMap.Strict as M
-import qualified Data.Serialize.Put as P
 import Data.String (fromString)
+import qualified Data.Text as T
 import Database.CQL4.Exceptions
 import Database.CQL4.Internal.Protocol
 import Database.CQL4.Internal.Types
-import UnliftIO.Concurrent (ThreadId, forkIO, killThread)
-import UnliftIO.Exception (bracket_, onException, throwIO)
+import Database.CQL4.Protocol
+import Database.CQL4.Types
+import UnliftIO.Concurrent (forkIO, killThread)
+import UnliftIO.Exception (onException, throwIO)
 import UnliftIO.STM
-
--- | A Connection is a ReaderT with mutable state + ExceptT
-type ConnectionIO = ReaderT Connection (ExceptT CQLException IO)
 
 -- | Execute the ConnectionIO monad
 runConnection :: ConnectionIO a -> Connection -> IO (Either CQLException a)
@@ -71,23 +52,6 @@ runConnection' m c = do
   case ea of
     Left ex -> throwIO ex
     Right a -> pure a
-
--- | The data inside a ConnectionIO ReaderT
-data Connection = Connection
-  { connSocket :: AppData -- ^ conduit app data for the underlying socket
-  , connSem :: QSem -- ^ semaphore that guards writing to the socket
-  , connStreamID :: TVar StreamID -- ^ counter for generating stream ids
-  , connPending :: TVar (M.HashMap StreamID (TMVar Message)) -- ^ map of pending requests
-  , connDispatcher :: TMVar ThreadId -- ^ dedicated thread to dispatch server messages
-  , connLogger :: Logger -- ^ logging function for requests/responses
-  }
-
--- | A logging function
---
--- Will log the bytestrings on the wire, for debugging
---
--- See hexdumpLogger or (const pure)
-type Logger = String -> B.ByteString -> IO B.ByteString
 
 -- | Connection constructor for use with runReaderT
 --
@@ -138,7 +102,7 @@ initConnection = do
   msg <- command startup
   case msg of
     ReadyMsg -> pure cdata
-    x -> throwIO $ messageException "unexpected response type" x
+    x -> throwIO $ messageException ("unexpected response type: " ++ show x)
 
 -- | Close the connection.
 --
@@ -153,86 +117,15 @@ closeConnection = do
     Nothing -> pure ()
     Just x -> liftIO $ killThread x
 
--- | Generate the next stream id and a TMVar for the result
-streamID :: ConnectionIO (StreamID, TMVar Message)
-streamID = do
-  idVar <- asks connStreamID
-  pendingVar <- asks connPending
-  p <- liftIO newEmptyTMVarIO
-  let go pending sid =
-        if M.member sid pending
-          then go pending (max 0 (1 + sid))
-          else do
-            writeTVar idVar (max 0 (1 + sid))
-            writeTVar pendingVar (M.insert sid p pending)
-            pure (sid, p)
-  liftIO $
-    atomically $ do
-      sid <- readTVar idVar
-      pending <- readTVar pendingVar
-      go pending sid
+-- | Execute a CQL query when you are not interested in the result.
+execute :: Consistency -> T.Text -> [TypedValue] -> ConnectionIO ()
+execute cl cql vs = do
+  msg <- command (putQuery $ makeQuery cl cql vs)
+  unitResult msg
 
--- | Send a command frame over the socket
-command :: (StreamID -> P.Put) -> ConnectionIO Message
-command cmd = do
-  (_, rslt) <- command' cmd
-  atomically (takeTMVar rslt)
-
--- | Send a command frame over the socket, but do not wait.
---
--- It returns the TMVar instead that can be waited on.
-command' :: (StreamID -> P.Put) -> ConnectionIO (StreamID, TMVar Message)
-command' cmd = do
-  sock <- asks connSocket
-  logger <- asks connLogger
-  sem <- asks connSem
-  (sid, rslt) <- streamID
-  liftIO $
-    bracket_ (waitQSem sem) (signalQSem sem) $
-    runConduit
-      (sourcePut (cmd sid) .| CC.mapM (logger "request") .| appSink sock)
-  pure (sid, rslt)
-
--- | Get the QueryResult from the message.
---
--- Any other message type is an error.
-queryResult :: Message -> ConnectionIO QueryResult
-queryResult msg =
-  case msg of
-    ResultMsg x -> pure x
-    x -> throwError $ messageException "invalid response to query command" x
-
--- | Get the actual result rows
---
--- Used as `command .... >>= queryResult >>= resultRows`
-resultRows :: QueryResult -> ConnectionIO [[TypedValue]]
-resultRows = pure . _resultRows
-
-unitResult :: Message -> ConnectionIO ()
-unitResult msg = queryResult msg $> ()
-
--- ! Dispatch server respones server responses - will never return, must be killed
---
--- XXX; on exception, when bugging out, should set this in the connection.
--- all pendings waits should be errored, all future queries should error immediately
-dispatchResponses :: ConnectionIO ()
-dispatchResponses = do
-  sock <- asks connSocket
-  logger <- asks connLogger
-  pendingVar <- asks connPending
-  let handleMessage (h, msg) =
-        atomically $ do
-          let sid = frameStream h
-          pending <- readTVar pendingVar
-          case M.lookup sid pending of
-            Nothing
-          -- XXX - handle server side events
-             -> pure ()
-            Just rslt -> do
-              writeTVar pendingVar (M.delete sid pending)
-              putTMVar rslt msg
-              pure ()
-  liftIO $
-    runConduit
-      (appSource sock .| CC.mapM (logger "response") .| conduitGet2 message .|
-       CC.mapM_ handleMessage)
+-- | Execute a CQL query and return the results
+executeQuery ::
+     Consistency -> T.Text -> [TypedValue] -> ConnectionIO [[TypedValue]]
+executeQuery cl cql vs = do
+  msg <- command (putQuery $ makeQuery cl cql vs)
+  queryResult msg >>= resultRows

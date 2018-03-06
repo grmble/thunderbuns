@@ -14,10 +14,9 @@ import UnliftIO.Exception
 -- This will be thrown on errors in the CQL Code.
 -- Note there may be also GetExceptions from Cereal
 data CQLException
-  = CQLException String
+  = CQLException ErrorMsgT
                  CallStack
   | MessageException String
-                     Message
                      CallStack
   | FromValueException String
                        TypedValue
@@ -31,9 +30,8 @@ instance Exception CQLException
 showCQLException :: CQLException -> String
 showCQLException ex =
   case ex of
-    CQLException str cs -> showEx "CQLException" str cs
-    MessageException str msg cs ->
-      showEx "MessageException" (str <> ": " <> (show msg)) cs
+    CQLException msg cs -> showEx "CQLException" (show msg) cs
+    MessageException str cs -> showEx "MessageException" str cs
     FromValueException str tv cs ->
       showEx "FromValueException" (str <> ": " <> (show tv)) cs
   where
@@ -42,12 +40,12 @@ showCQLException ex =
     go (x, y) = "  " <> x <> ", (" <> prettySrcLoc y <> ")\n"
 
 -- | Smart constructor that deals with the call stack
-cqlException :: HasCallStack => String -> CQLException
-cqlException str = CQLException str callStack
+cqlException :: HasCallStack => ErrorMsgT -> CQLException
+cqlException err = CQLException err callStack
 
 -- | Smart constructor that deals with the call stack
-messageException :: HasCallStack => String -> Message -> CQLException
-messageException str msg = MessageException str msg callStack
+messageException :: HasCallStack => String -> CQLException
+messageException str = MessageException str callStack
 
 -- | Smart constructor that deals with the call stack
 fromValueException :: HasCallStack => String -> TypedValue -> CQLException

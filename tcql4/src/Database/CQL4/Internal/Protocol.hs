@@ -1,14 +1,16 @@
 {- | CQL4 protocol defined in terms of cereal gets and puts -}
-module Database.CQL4.Internal.Protocol
-  ( startup
-  , options
-  , makeQuery
-  , executeQuery
-  , message
-  ) where
+module Database.CQL4.Internal.Protocol where
 
+import Control.Concurrent.QSem
 import Control.Monad (replicateM)
+import Control.Monad.Except (liftIO, throwError)
+import Control.Monad.Reader (asks)
+import Data.Conduit ((.|), runConduit)
+import Data.Conduit.Cereal (conduitGet2, sourcePut)
+import qualified Data.Conduit.Combinators as CC
+import Data.Conduit.Network (appSink, appSource)
 import Data.Foldable (for_)
+import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import Data.Int (Int32)
 import qualified Data.List as L
@@ -17,9 +19,109 @@ import qualified Data.Serialize.Get as G
 import qualified Data.Serialize.Put as P
 import qualified Data.Text as T
 import Data.Traversable (for)
+import Database.CQL4.Exceptions
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
 import Database.CQL4.Internal.Types
+import Database.CQL4.Protocol
+import Database.CQL4.Types
+import UnliftIO.Exception (bracket_)
+import UnliftIO.STM
+
+-- | Generate the next stream id and a TMVar for the result
+streamID :: ConnectionIO (StreamID, TMVar Message)
+streamID = do
+  idVar <- asks connStreamID
+  pendingVar <- asks connPending
+  p <- liftIO newEmptyTMVarIO
+  let go pending sid =
+        if M.member sid pending
+          then go pending (max 0 (1 + sid))
+          else do
+            writeTVar idVar (max 0 (1 + sid))
+            writeTVar pendingVar (M.insert sid p pending)
+            pure (sid, p)
+  liftIO $
+    atomically $ do
+      sid <- readTVar idVar
+      pending <- readTVar pendingVar
+      go pending sid
+
+-- | Send a command frame over the socket
+command :: (StreamID -> P.Put) -> ConnectionIO Message
+command cmd = do
+  (_, rslt) <- command' cmd
+  atomically (takeTMVar rslt)
+
+-- | Send a command frame over the socket, but do not wait.
+--
+-- It returns the TMVar instead that can be waited on.
+command' :: (StreamID -> P.Put) -> ConnectionIO (StreamID, TMVar Message)
+command' cmd = do
+  sock <- asks connSocket
+  logger <- asks connLogger
+  sem <- asks connSem
+  (sid, rslt) <- streamID
+  liftIO $
+    bracket_ (waitQSem sem) (signalQSem sem) $
+    runConduit
+      (sourcePut (cmd sid) .| CC.mapM (logger "request") .| appSink sock)
+  pure (sid, rslt)
+
+-- | Get the QueryResult from the message.
+--
+-- Any other message type is an error.
+queryResult :: Message -> ConnectionIO QueryResult
+queryResult (ResultMsg x) = pure x
+queryResult x =
+  throwError $
+  messageException ("invalid response to query command: " <> show x)
+
+-- | Get the actual result rows
+--
+-- Any QueryResult will, it's just an empty list if it does not have any rows
+resultRows :: QueryResult -> ConnectionIO [[TypedValue]]
+resultRows (QueryResultRows rr) = pure (rrRows rr)
+resultRows _ = pure []
+
+-- | Get the result rows object
+--
+-- This is the stricter version - only a QueryResultRows will do, anything
+-- else is an error.
+resultRows' :: QueryResult -> ConnectionIO ResultRows
+resultRows' (QueryResultRows rr) = pure rr
+resultRows' x =
+  throwError $ messageException ("not a result with rows: " <> show x)
+
+-- | Get a Unit result
+unitResult :: Message -> ConnectionIO ()
+unitResult msg = queryResult msg $> ()
+
+-- ! Dispatch server respones server responses - will never return, must be killed
+--
+-- XXX; on exception, when bugging out, should set this in the connection.
+-- all pendings waits should be errored, all future queries should error immediately
+dispatchResponses :: ConnectionIO ()
+dispatchResponses = do
+  sock <- asks connSocket
+  logger <- asks connLogger
+  pendingVar <- asks connPending
+  let handleMessage (h, msg) =
+        atomically $ do
+          let sid = frameStream h
+          pending <- readTVar pendingVar
+          case M.lookup sid pending of
+            Nothing
+          -- XXX - handle server side events
+             -> pure ()
+            Just rslt -> do
+              writeTVar pendingVar (M.delete sid pending)
+              putTMVar rslt msg
+              pure ()
+  liftIO $
+    runConduit
+      (appSource sock .| CC.mapM (logger "response") .| conduitGet2 message .|
+       CC.mapM_ handleMessage)
 
 -- | Put the startup message
 --
@@ -52,8 +154,8 @@ makeQuery cl cql vs =
   , queryDefaultTimestamp = Nothing
   }
 
-executeQuery :: Query -> StreamID -> P.Put
-executeQuery q sid =
+putQuery :: Query -> StreamID -> P.Put
+putQuery q sid =
   P.putNested (CP.frameHeader RequestFrame [] sid OpQuery) $ do
     CP.longString (queryText q)
     CP.consistency (queryConsistency q)
@@ -112,20 +214,21 @@ resultRowsMessage = do
   colSpecs <- replicateM colcnt (CG.columnType gt)
   rowcnt <- fromIntegral <$> CG.int
   rows <- replicateM rowcnt (for colSpecs (CG.typedBytes . columnType))
-  pure $ ResultMsg $ QueryResultRows colcnt gt ps colSpecs rowcnt rows
+  pure $
+    ResultMsg $ QueryResultRows $ ResultRows colcnt gt ps colSpecs rowcnt rows
 
 errorMessage :: G.Get Message
 errorMessage = do
   code <- CG.int
   msg <- CG.string
   case code of
-    0x0000 -> pure $ ErrorMsg code msg []
-    0x000A -> pure $ ErrorMsg code msg []
-    0x0100 -> pure $ ErrorMsg code msg []
+    0x0000 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x000A -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x0100 -> pure $ ErrorMsg $ ErrorMsgT code msg []
     0x1000 -> _errorMsg code msg [_epConsistency, _epInt "req", _epInt "alive"]
-    0x1001 -> pure $ ErrorMsg code msg []
-    0x1002 -> pure $ ErrorMsg code msg []
-    0x1003 -> pure $ ErrorMsg code msg []
+    0x1001 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x1002 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x1003 -> pure $ ErrorMsg $ ErrorMsgT code msg []
     0x1100 ->
       _errorMsg
         code
@@ -172,18 +275,18 @@ errorMessage = do
         , _epInt "numFailures"
         , _epString "writeType"
         ]
-    0x2000 -> pure $ ErrorMsg code msg []
-    0x2100 -> pure $ ErrorMsg code msg []
-    0x2200 -> pure $ ErrorMsg code msg []
-    0x2300 -> pure $ ErrorMsg code msg []
+    0x2000 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x2100 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x2200 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    0x2300 -> pure $ ErrorMsg $ ErrorMsgT code msg []
     0x2400 -> _errorMsg code msg [_epString "keyspace", _epString "table"]
-    0x2500 -> pure $ ErrorMsg code msg []
-    x -> pure $ ErrorMsg code msg [("unknown code", show' x)]
+    0x2500 -> pure $ ErrorMsg $ ErrorMsgT code msg []
+    x -> pure $ ErrorMsg $ ErrorMsgT code msg [("unknown code", show' x)]
   where
     show' :: Show a => a -> T.Text
     show' = T.pack . show
     _errorMsg :: Int32 -> T.Text -> [G.Get (T.Text, T.Text)] -> G.Get Message
-    _errorMsg code msg ps = ErrorMsg code msg <$> sequence ps
+    _errorMsg code msg ps = ErrorMsg . ErrorMsgT code msg <$> sequence ps
     _ep :: T.Text -> (a -> T.Text) -> G.Get a -> G.Get (T.Text, T.Text)
     _ep n f g = ((n, ) . f) <$> g
     _epConsistency :: G.Get (T.Text, T.Text)

@@ -5,8 +5,10 @@ The module provides functions to convert between TypedValue
 -}
 module Database.CQL4.Values where
 
+import qualified Data.ByteString.Lazy as LB
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
+import qualified Data.UUID as U
 import Database.CQL4.Exceptions
 import Database.CQL4.Internal.Types
 
@@ -37,4 +39,9 @@ instance IsCQLValue Scientific.Scientific where
   fromValue (TinyintValue v) = Right $ Scientific.scientific (toInteger v) 0
   fromValue v@NullValue = Left $ fromValueException "null->Integer" v
   fromValue x = Left $ fromValueException "Scientific" x
+
+instance IsCQLValue U.UUID where
+  toValue = UUIDValue
+  fromValue (UUIDValue uu) = Right uu
+  fromValue x = Left $ fromValueException "UUID" x
 -- XXX needs more cowbell
