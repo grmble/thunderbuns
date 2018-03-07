@@ -186,7 +186,7 @@ strmap g = do
 bool :: G.Get Bool
 bool = do
   b <- G.getWord8
-  pure $ b == 0
+  pure $ b /= 0
 
 -- | an unsigned integer representing days with epoch centered at 2^31
 date :: G.Get Day

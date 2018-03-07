@@ -8,6 +8,7 @@ import qualified Data.HashMap.Strict as M
 import Data.Int
 import qualified Data.List as L
 import qualified Data.Scientific as Scientific
+import Data.Serialize.IEEE754 (putFloat32be, putFloat64be)
 import Data.Serialize.Put as P
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -60,6 +61,15 @@ varint :: Integer -> P.Put
 varint i = do
   let bs = computeVarint i
   _putIntLen $ L.length bs
+  for_ bs P.putWord8
+
+decimal :: Scientific.Scientific -> P.Put
+decimal i = do
+  let unscaled = Scientific.coefficient i
+  let scale = Scientific.base10Exponent i
+  let bs = computeVarint unscaled
+  _putIntLen (4 + L.length bs)
+  int $ fromIntegral (-scale)
   for_ bs P.putWord8
 
 computeVarint :: Integer -> [Word8]
@@ -120,17 +130,20 @@ typedValue :: TypedValue -> P.Put
 typedValue NullValue = _putIntLen 0
 typedValue (TextValue str) = _withIntLen $ _utf8 str
 typedValue (BlobValue bs) = _withIntLen bs
-typedValue (BoolValue b) =
+typedValue (BoolValue b) = do
+  _putIntLen 1
   P.putInt8
     (if b
        then 1
        else 0)
-typedValue (LongValue i) = P.putInt64be i
-typedValue (DecimalValue i) = do
-  let unscaled = Scientific.coefficient i
-  let scale = Scientific.base10Exponent i
-  int $ fromIntegral (-scale)
-  varint unscaled
+typedValue (LongValue i) = _putIntLen 8 *> P.putInt64be i
+typedValue (IntValue i) = _putIntLen 4 *> P.putInt32be i
+typedValue (SmallintValue i) = _putIntLen 2 *> P.putInt16be i
+typedValue (TinyintValue i) = _putIntLen 1 *> P.putInt8 i
+typedValue (FloatValue f) = _putIntLen 4 *> putFloat32be f
+typedValue (DoubleValue d) = _putIntLen 8 *> putFloat64be d
+typedValue (DecimalValue i) = decimal i
+typedValue (VarintValue vi) = varint vi
 typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 
 _putShortLen :: Int -> P.Put

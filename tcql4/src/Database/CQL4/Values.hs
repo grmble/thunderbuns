@@ -8,6 +8,8 @@ module Database.CQL4.Values where
 import Control.Monad (when)
 import Control.Monad.Except (liftEither, throwError)
 import Control.Monad.State (StateT, evalStateT, get, put)
+import qualified Data.ByteString as B
+import Data.Int (Int16, Int32, Int64, Int8)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import qualified Data.UUID as U
@@ -16,40 +18,82 @@ import Database.CQL4.Exceptions
 import Database.CQL4.Protocol
 import Database.CQL4.Types
 
+-- | IsCQLValue is a type that has a Cassandra equivalent
+--
+-- Note that cassandra is strict about the types it receives -
+-- if a table column has type X, the bind parameter must be exactly
+-- type X.  E.g. for a 16bit int (Cassandra: smallint), only
+-- a 16 bit value will do -  you can't just transmit a 8-bit int.
+--
+-- So the recommandation is to use the exact equivalent type
+-- in your haskell data structure.  E.g. if you use `int`,
+-- use Int32 in your data structure.
 class IsCQLValue a where
+  -- | Construct a typed value for the haskell type a
   toValue :: a -> TypedValue
+  -- | Extract a haskell type for the typed value.
   fromValue :: TypedValue -> Either CQLException a
 
 instance IsCQLValue T.Text where
   toValue = TextValue
   fromValue (TextValue t) = Right t
-  fromValue v@NullValue = Left $ fromValueException "null->Text" v
   fromValue x = Left $ fromValueException "Text" x
 
 instance IsCQLValue Integer where
   toValue = VarintValue
   fromValue (VarintValue v) = Right v
-  fromValue (LongValue v) = Right (toInteger v)
-  fromValue (SmallintValue v) = Right (toInteger v)
-  fromValue (TinyintValue v) = Right (toInteger v)
-  fromValue v@NullValue = Left $ fromValueException "null->Integer" v
   fromValue x = Left $ fromValueException "Integer" x
+
+instance IsCQLValue Int64 where
+  toValue = LongValue
+  fromValue (LongValue v) = Right (fromIntegral v)
+  fromValue x = Left $ fromValueException "Int" x
+
+instance IsCQLValue Int32 where
+  toValue = IntValue . fromIntegral
+  fromValue (IntValue v) = Right (fromIntegral v)
+  fromValue x = Left $ fromValueException "Int32" x
+
+instance IsCQLValue Int16 where
+  toValue = SmallintValue . fromIntegral
+  fromValue (SmallintValue v) = Right (fromIntegral v)
+  fromValue x = Left $ fromValueException "Int16" x
+
+instance IsCQLValue Int8 where
+  toValue = TinyintValue . fromIntegral
+  fromValue (TinyintValue v) = Right (fromIntegral v)
+  fromValue x = Left $ fromValueException "Int8" x
+
+instance IsCQLValue Float where
+  toValue = FloatValue
+  fromValue (FloatValue v) = Right v
+  fromValue x = Left $ fromValueException "Float" x
+
+instance IsCQLValue Double where
+  toValue = DoubleValue
+  fromValue (DoubleValue d) = Right d
+  fromValue x = Left $ fromValueException "Double" x
 
 instance IsCQLValue Scientific.Scientific where
   toValue = DecimalValue
-  fromValue (VarintValue v) = Right $ Scientific.scientific v 0
-  fromValue (LongValue v) = Right $ Scientific.scientific (toInteger v) 0
-  fromValue (SmallintValue v) = Right $ Scientific.scientific (toInteger v) 0
-  fromValue (TinyintValue v) = Right $ Scientific.scientific (toInteger v) 0
-  fromValue v@NullValue = Left $ fromValueException "null->Integer" v
+  fromValue (DecimalValue sc) = Right sc
   fromValue x = Left $ fromValueException "Scientific" x
+
+instance IsCQLValue Bool where
+  toValue = BoolValue
+  fromValue (BoolValue b) = Right b
+  fromValue x = Left $ fromValueException "Bool" x
+
+instance IsCQLValue B.ByteString where
+  toValue = BlobValue
+  fromValue (BlobValue bs) = Right bs
+  fromValue x = Left $ fromValueException "ByteString" x
 
 instance IsCQLValue U.UUID where
   toValue = UUIDValue
   fromValue (UUIDValue uu) = Right uu
   fromValue x = Left $ fromValueException "UUID" x
 
--- XXX need more types ...
 -- | Helper monad to extract values from a result set
 --
 -- It maintains a current slice of the rows values,
