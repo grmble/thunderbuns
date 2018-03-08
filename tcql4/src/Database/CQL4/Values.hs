@@ -12,6 +12,8 @@ import qualified Data.ByteString as B
 import Data.Int (Int16, Int32, Int64, Int8)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
+import Data.Time.Calendar (Day)
+import Data.Time.Clock (UTCTime)
 import qualified Data.UUID as U
 import qualified Data.Vector as V
 import Database.CQL4.Exceptions
@@ -93,6 +95,16 @@ instance IsCQLValue U.UUID where
   toValue = UUIDValue
   fromValue (UUIDValue uu) = Right uu
   fromValue x = Left $ fromValueException "UUID" x
+
+instance IsCQLValue Day where
+  toValue = DateValue
+  fromValue (DateValue d) = Right d
+  fromValue x = Left $ fromValueException "Day" x
+
+instance IsCQLValue UTCTime where
+  toValue = TimestampValue
+  fromValue (TimestampValue ts) = Right ts
+  fromValue x = Left $ fromValueException "UTCTime" x
 
 -- | Helper monad to extract values from a result set
 --

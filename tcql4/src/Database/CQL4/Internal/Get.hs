@@ -361,9 +361,7 @@ typedBytes ct = do
              go "map" len [] (bytesMap (typedBytes ctk) (typedBytes ctv))
            CTSet ct' ->
              SetValue <$> go "set" len [] (bytesList $ typedBytes ct')
-           CTUDT ks un cts
-          -- XXX implement me
-            -> undefined
+           -- XXX CTUDT ks un cts -> undefined
            CTTuple cts -> TupleValue <$> go "tuple" len [] (for cts typedBytes)
   where
     go :: String -> Int -> a -> G.Get a -> G.Get a

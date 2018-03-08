@@ -38,8 +38,9 @@ dependencies:
 - uuid
 - vector
 # intero needs these here ...
-- hspec
-- QuickCheck
+# maybe spacemacs haskell mode does not?
+# - hspec
+# - QuickCheck
 
 library:
   source-dirs: src

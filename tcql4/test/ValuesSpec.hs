@@ -8,6 +8,8 @@ import Data.Monoid ((<>))
 import qualified Data.Scientific as Scientific
 import Data.String (fromString)
 import qualified Data.Text as T
+import Data.Time.Calendar (fromGregorian)
+import Data.Time.Clock
 import Data.Traversable (for)
 import qualified Data.UUID as U
 import qualified Data.UUID.V4 as V4
@@ -59,6 +61,8 @@ createKSAndTables = do
         , "create table if not exists test_tinyint (pk uuid, value tinyint, primary key (pk))"
         , "create table if not exists test_decimal (pk uuid, value decimal, primary key (pk))"
         , "create table if not exists test_boolean (pk uuid, value boolean, primary key (pk))"
+        , "create table if not exists test_date (pk uuid, value date, primary key (pk))"
+        , "create table if not exists test_timestamp (pk uuid, value timestamp, primary key (pk))"
         ]
   for_ cql (\c -> execute One c [])
 
@@ -85,7 +89,7 @@ writeAndRead conn tname vs = do
   kvs <- runConnection' (useTest *> writeValues tname vs) conn
   for_ kvs $ \(k, v) -> do
     v' <- runConnection' (readValue tname k) conn
-    v `shouldBe` v'
+    v' `shouldBe` v
 
 spec :: Spec
 spec =
@@ -93,24 +97,37 @@ spec =
     describe "setup" $
       it "create keyspace and tables" $ runConnection' createKSAndTables
     describe "text" $ do
-      --{-
-      it "write/read text values" $ \conn -> do
+      it "write/read text values" $ \conn ->
         writeAndRead conn "test_text" (["", "x"] :: [T.Text])
-      it "write/read varint/integer values" $ \conn -> do
+      it "write/read varint/integer values" $ \conn ->
         writeAndRead conn "test_varint" ([0, 0xdeadbeef] :: [Integer])
-      it "write/read bigint/int64 values" $ \conn -> do
+      it "write/read bigint/int64 values" $ \conn ->
         writeAndRead conn "test_bigint" ([0, 0xdeadbeef] :: [Int64])
-      it "write/read int/int32 values" $ \conn -> do
+      it "write/read int/int32 values" $ \conn ->
         writeAndRead conn "test_int" ([0, 0x3ead1eef] :: [Int32])
-      it "write/read smallint/int16 values" $ \conn -> do
+      it "write/read smallint/int16 values" $ \conn ->
         writeAndRead conn "test_smallint" ([0, 0x1eef] :: [Int16])
-      it "write/read tinyint/integer values" $ \conn -> do
+      it "write/read tinyint/integer values" $ \conn ->
         writeAndRead conn "test_tinyint" ([0, 0x1e] :: [Int8])
-      it "write/read boolean/bool values" $ \conn -> do
-        writeAndRead conn "test_boolean" ([False, True])
-      --}
-      it "write/read decimal/scientific values" $ \conn -> do
+      it "write/read boolean/bool values" $ \conn ->
+        writeAndRead conn "test_boolean" [False, True]
+      it "write/read decimal/scientific values" $ \conn ->
         writeAndRead
           conn
           "test_decimal"
           ([0, 3.1415297] :: [Scientific.Scientific])
+      it "write/read date/day values" $ \conn ->
+        writeAndRead
+          conn
+          "test_date"
+          [fromGregorian 1970 1 1, fromGregorian 2018 3 10]
+      it "write/read timestamp/UTCTime values" $ \conn -> do
+        now <- getCurrentTime
+        let time = utctDayTime now
+        let now' =
+              now
+              { utctDayTime =
+                  secondsToDiffTime $ round (realToFrac time / 10e12 :: Double)
+              }
+        putStrLn ("NOW IS " ++ show now')
+        writeAndRead conn "test_timestamp" [now']

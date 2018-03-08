@@ -12,6 +12,7 @@ import Data.Serialize.IEEE754 (putFloat32be, putFloat64be)
 import Data.Serialize.Put as P
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import Data.Time.Calendar (Day, diffDays)
 import Data.Time.Clock
 import Data.UUID as U
 import Data.Word
@@ -103,6 +104,12 @@ timestamp ts = do
   let dt = diffUTCTime ts CG._epochTimestamp
   P.putInt64be $ round $ dt * 1000
 
+-- | an unsigned integer representing days with epoch centered at 2^31
+date :: Day -> P.Put
+date d = do
+  let d' = diffDays d CG._epochDate
+  P.putInt32be $ fromIntegral d'
+
 consistency :: Consistency -> P.Put
 consistency cl = _putShortLen $ fromEnum cl
 
@@ -145,6 +152,8 @@ typedValue (DoubleValue d) = _putIntLen 8 *> putFloat64be d
 typedValue (DecimalValue i) = decimal i
 typedValue (VarintValue vi) = varint vi
 typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
+typedValue (DateValue d) = _putIntLen 4 *> date d
+typedValue (TimestampValue ts) = _putIntLen 8 *> timestamp ts
 
 _putShortLen :: Int -> P.Put
 _putShortLen = P.putWord16be . fromIntegral
