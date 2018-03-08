@@ -63,6 +63,7 @@ createKSAndTables = do
         , "create table if not exists test_boolean (pk uuid, value boolean, primary key (pk))"
         , "create table if not exists test_date (pk uuid, value date, primary key (pk))"
         , "create table if not exists test_timestamp (pk uuid, value timestamp, primary key (pk))"
+        , "create table if not exists test_inet (pk uuid, value inet, primary key (pk))"
         ]
   for_ cql (\c -> execute One c [])
 
@@ -131,3 +132,5 @@ spec =
               }
         putStrLn ("NOW IS " ++ show now')
         writeAndRead conn "test_timestamp" [now']
+      it "write/read inet/IPAddress values" $ \conn ->
+        writeAndRead conn "test_inet" [IPAddressV4 0x7f000001]

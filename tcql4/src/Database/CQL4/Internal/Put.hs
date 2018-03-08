@@ -110,8 +110,19 @@ date d = do
   let d' = diffDays d CG._epochDate
   P.putInt32be $ fromIntegral d'
 
+-- | A consistency level
 consistency :: Consistency -> P.Put
 consistency cl = _putShortLen $ fromEnum cl
+
+-- | a 4-byte or 16-byte sequence denoting an IP4 or IPv6 address
+ipAddress :: IPAddress -> P.Put
+ipAddress (IPAddressV4 w) = _putIntLen 4 *> P.putWord32be w
+ipAddress (IPAddressV6 (w1, w2, w3, w4)) = do
+  _putIntLen 16
+  P.putWord32be w1
+  P.putWord32be w2
+  P.putWord32be w3
+  P.putWord32be w4
 
 queryFlags :: Query -> P.Put
 queryFlags (Query _ _ vs sm psz pst sc dt) =
@@ -154,6 +165,7 @@ typedValue (VarintValue vi) = varint vi
 typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 typedValue (DateValue d) = _putIntLen 4 *> date d
 typedValue (TimestampValue ts) = _putIntLen 8 *> timestamp ts
+typedValue (InetValue ip) = ipAddress ip
 
 _putShortLen :: Int -> P.Put
 _putShortLen = P.putWord16be . fromIntegral

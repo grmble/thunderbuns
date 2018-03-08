@@ -106,6 +106,11 @@ instance IsCQLValue UTCTime where
   fromValue (TimestampValue ts) = Right ts
   fromValue x = Left $ fromValueException "UTCTime" x
 
+instance IsCQLValue IPAddress where
+  toValue = InetValue
+  fromValue (InetValue ip) = Right ip
+  fromValue x = Left $ fromValueException "IPAddress" x
+
 -- | Helper monad to extract values from a result set
 --
 -- It maintains a current slice of the rows values,
