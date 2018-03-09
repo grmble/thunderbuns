@@ -79,8 +79,8 @@ data ColumnType
   | CTSet ColumnType
   | CTUDT T.Text
           T.Text
-          [(T.Text, ColumnType)]
-  | CTTuple [ColumnType]
+          (V.Vector (T.Text, ColumnType))
+  | CTTuple (V.Vector ColumnType)
   deriving (Show, Eq)
 
 -- | A typed value in a query result
@@ -122,13 +122,13 @@ data TypedValue
   | TimeValue DiffTime
   | SmallintValue Int16
   | TinyintValue Int8
-  | ListValue [TypedValue]
-  | MapValue [(TypedValue, TypedValue)]
-  | SetValue [TypedValue]
+  | ListValue (V.Vector TypedValue)
+  | MapValue (V.Vector (TypedValue, TypedValue))
+  | SetValue (V.Vector TypedValue)
   | UDTValue T.Text
              T.Text
-             [(T.Text, TypedValue)]
-  | TupleValue [TypedValue]
+             (V.Vector (T.Text, TypedValue))
+  | TupleValue (V.Vector TypedValue)
   deriving (Show, Eq)
 
 -- | A ip address

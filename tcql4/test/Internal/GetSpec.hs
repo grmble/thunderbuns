@@ -4,6 +4,7 @@ import qualified Data.Serialize.Get as G
 import Database.CQL4.Internal.Get
 import Database.CQL4.Internal.Types
 import Database.CQL4.Types
+import qualified Data.Vector as V
 import Test.Hspec
 
 main :: IO ()
@@ -96,7 +97,7 @@ spec = do
       G.runGet
         _columnType
         "\x00\x30\x00\x01\x41\x00\x01\x42\x00\x01\x00\x01\x43\x00\x01" `shouldBe`
-      Right (CTUDT "A" "B" [("C", CTAscii)])
+      Right (CTUDT "A" "B" (V.fromList [("C", CTAscii)]))
     it "tuple" $
       G.runGet _columnType "\x00\x31\x00\x01\x00\x02" `shouldBe`
-      Right (CTTuple [CTBigint])
+      Right (CTTuple (V.fromList [CTBigint]))

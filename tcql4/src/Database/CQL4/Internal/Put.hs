@@ -15,6 +15,7 @@ import qualified Data.Text.Encoding as TE
 import Data.Time.Calendar (Day, diffDays)
 import Data.Time.Clock
 import Data.UUID as U
+import qualified Data.Vector as V
 import Data.Word
 import qualified Database.CQL4.Internal.Get as CG
 import Database.CQL4.Internal.Types
@@ -110,6 +111,12 @@ date d = do
   let d' = diffDays d CG._epochDate
   P.putInt32be $ fromIntegral d'
 
+-- | an 8 byte two's complement long representing nanoseconds since midnight
+time :: DiffTime -> P.Put
+time t = do
+  let d = fromIntegral (diffTimeToPicoseconds t) / 1000 :: Double
+  P.putInt64be $ round d
+
 -- | A consistency level
 consistency :: Consistency -> P.Put
 consistency cl = _putShortLen $ fromEnum cl
@@ -144,7 +151,6 @@ queryValues (Query _ _ vs _ _ _ _ _) = do
   for_ vs typedValue
 
 typedValue :: TypedValue -> P.Put
--- XXX typedValue (CustomValue n v)
 typedValue NullValue = _putIntLen 0
 typedValue (TextValue str) = _withIntLen $ _utf8 str
 typedValue (BlobValue bs) = _withIntLen bs
@@ -165,8 +171,12 @@ typedValue (VarintValue vi) = varint vi
 typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 typedValue (TimeUUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 typedValue (DateValue d) = _putIntLen 4 *> date d
+typedValue (TimeValue t) = _putIntLen 8 *> time t
 typedValue (TimestampValue ts) = _putIntLen 8 *> timestamp ts
 typedValue (InetValue ip) = ipAddress ip
+typedValue (ListValue vs) = do
+  _putIntLen (V.length vs)
+  for_ vs typedValue
 
 _putShortLen :: Int -> P.Put
 _putShortLen = P.putWord16be . fromIntegral

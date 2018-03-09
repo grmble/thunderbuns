@@ -13,7 +13,7 @@ import Data.Int (Int16, Int32, Int64, Int8)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Time.Calendar (Day)
-import Data.Time.Clock (UTCTime)
+import Data.Time.Clock (UTCTime, DiffTime)
 import qualified Data.UUID as U
 import qualified Data.Vector as V
 import Database.CQL4.Exceptions
@@ -30,6 +30,10 @@ import Database.CQL4.Types
 -- So the recommandation is to use the exact equivalent type
 -- in your haskell data structure.  E.g. if you use `int`,
 -- use Int32 in your data structure.
+--
+-- Note that UUIDValue and TimeUUIDValue both map to haskell UUID.
+-- The typeclass instance is for UUIDValue, if you want to send
+-- TimeUUID you can't use toValue, use TimeUUIDValue.
 class IsCQLValue a where
   toValue :: a -> TypedValue
   -- ^ Construct a typed value for the haskell type a
@@ -105,6 +109,11 @@ instance IsCQLValue UTCTime where
   toValue = TimestampValue
   fromValue (TimestampValue ts) = Right ts
   fromValue x = Left $ fromValueException "UTCTime" x
+
+instance IsCQLValue DiffTime where
+  toValue = TimeValue
+  fromValue (TimeValue t) = Right t
+  fromValue x = Left $ fromValueException "DiffTime" x
 
 instance IsCQLValue IPAddress where
   toValue = InetValue

@@ -22,6 +22,7 @@ import Data.Time.Clock
   )
 import Data.Traversable (for)
 import qualified Data.UUID as U
+import qualified Data.Vector as V
 import Data.Word (Word16)
 import Database.CQL4.Internal.Types
 import Database.CQL4.Types
@@ -145,10 +146,10 @@ list g = do
 --
 -- this is the kind of list in the results
 -- i assume whereever they write byte, you have an int len ...
-bytesList :: G.Get a -> G.Get [a]
+bytesList :: G.Get a -> G.Get (V.Vector a)
 bytesList g = do
   len <- _intLen
-  replicateM len g
+  V.replicateM len g
 
 -- | a short n, followed by n bytes if n >= 0
 shortBytes :: G.Get (Maybe B.ByteString)
@@ -164,10 +165,10 @@ option f = do
 -- | an int n followed by n key/value pairs.
 --
 -- this is the kind of map that shows up in result sets
-bytesMap :: G.Get a -> G.Get b -> G.Get [(a, b)]
+bytesMap :: G.Get a -> G.Get b -> G.Get (V.Vector (a, b))
 bytesMap k v = do
   n <- _intLen
-  replicateM n ((,) <$> k <*> v)
+  V.replicateM n ((,) <$> k <*> v)
 
 --- | a short n followed by n key/value pairs. key is always string.
 --
@@ -313,11 +314,11 @@ _columnType = snd <$> option _ct
       ks <- string
       udt <- string
       n <- _shortLen
-      tups <- replicateM n ((,) <$> string <*> _columnType)
+      tups <- V.replicateM n ((,) <$> string <*> _columnType)
       pure $ CTUDT ks udt tups
     _ct 0x0031 = do
       n <- _shortLen
-      CTTuple <$> replicateM n _columnType
+      CTTuple <$> V.replicateM n _columnType
     _ct x = fail ("unknown column type: " ++ show x)
 
 -- | an int n followed by n bytes representing the datatype
@@ -355,14 +356,14 @@ typedBytes ct = do
            CTSmallint -> SmallintValue <$> go "smallint" len 0 signedShort
            CTTinyint -> TinyintValue <$> go "tinyint" len 0 G.getInt8
            CTList ct' ->
-             ListValue <$> go "list" len [] (bytesList $ typedBytes ct')
+             ListValue <$> go "list" len mempty (bytesList $ typedBytes ct')
            CTMap ctk ctv ->
              MapValue <$>
-             go "map" len [] (bytesMap (typedBytes ctk) (typedBytes ctv))
+             go "map" len mempty (bytesMap (typedBytes ctk) (typedBytes ctv))
            CTSet ct' ->
-             SetValue <$> go "set" len [] (bytesList $ typedBytes ct')
+             SetValue <$> go "set" len mempty (bytesList $ typedBytes ct')
            -- XXX CTUDT ks un cts -> undefined
-           CTTuple cts -> TupleValue <$> go "tuple" len [] (for cts typedBytes)
+           CTTuple cts -> TupleValue <$> go "tuple" len mempty (for cts typedBytes)
   where
     go :: String -> Int -> a -> G.Get a -> G.Get a
     go msg len e g =

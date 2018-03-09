@@ -1,7 +1,5 @@
-(A) Bind variables
 (A) External packages: Types for external visible types (as now) imported by internal, Exceptions for exceptions (hsc), everything not internal in CQL4.hs
-(A) Tests with all supported datatypes: insert/query
-(A) Use vectors for result rows and column specs
+(C) API/tests for List/Set/Map
 (C) Handle exception in message dispatcher - make connection invalid. STM should cancel waiters
 (C) Prevent insertion of null values
 (D) Batch statements

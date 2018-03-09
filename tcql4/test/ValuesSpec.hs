@@ -13,6 +13,7 @@ import Data.Time.Clock
 import Data.Traversable (for)
 import qualified Data.UUID as U
 import qualified Data.UUID.V4 as V4
+import qualified Data.Vector as V
 import Database.CQL4.Connection
 import Database.CQL4.Protocol
 import Database.CQL4.Types
@@ -63,8 +64,10 @@ createKSAndTables = do
         , "create table if not exists test_boolean (pk uuid, value boolean, primary key (pk))"
         , "create table if not exists test_date (pk uuid, value date, primary key (pk))"
         , "create table if not exists test_timestamp (pk uuid, value timestamp, primary key (pk))"
+        , "create table if not exists test_time (pk uuid, value time, primary key (pk))"
         , "create table if not exists test_inet (pk uuid, value inet, primary key (pk))"
         , "create table if not exists test_counter (pk text, value counter, primary key (pk))"
+        , "create table if not exists test_list (pk uuid, value list<int>, primary key (pk))"
         ]
   for_ cql (\c -> execute One c [])
 
@@ -140,9 +143,15 @@ spec =
               }
         putStrLn ("NOW IS " ++ show now')
         writeAndRead conn "test_timestamp" [now']
+      it "write/read time/DiffTime values" $ \conn ->
+        writeAndRead conn "test_time" ([0, 3600] :: [DiffTime])
       it "write/read inet/IPAddress values" $ \conn ->
         writeAndRead conn "test_inet" [IPAddressV4 0x7f000001]
       it "can incrememt counter" $ \conn -> do
         c1 <- runConnection' (useTest *> incrementCounter) conn
         c2 <- runConnection' incrementCounter conn
         c2 `shouldBe` (c1 + 1)
+      {--
+      it "write/read list values" $ \conn ->
+        writeAndRead conn "test_list" [ListValue $ V.fromList [IntValue 1, IntValue 2, IntValue 3]]
+      --}
