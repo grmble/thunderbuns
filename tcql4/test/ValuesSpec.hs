@@ -64,6 +64,7 @@ createKSAndTables = do
         , "create table if not exists test_date (pk uuid, value date, primary key (pk))"
         , "create table if not exists test_timestamp (pk uuid, value timestamp, primary key (pk))"
         , "create table if not exists test_inet (pk uuid, value inet, primary key (pk))"
+        , "create table if not exists test_counter (pk text, value counter, primary key (pk))"
         ]
   for_ cql (\c -> execute One c [])
 
@@ -82,7 +83,7 @@ readValue :: IsCQLValue a => T.Text -> U.UUID -> ConnectionIO a
 readValue tname uu = do
   let cql = "select value from " <> tname <> " where pk = ?"
   rows <- executeQuery One cql [toValue uu]
-  extractSingleRow rows extract
+  extractSingleRow extract rows
 
 writeAndRead ::
      (Eq a, Show a, IsCQLValue a) => Connection -> T.Text -> [a] -> IO ()
@@ -91,6 +92,13 @@ writeAndRead conn tname vs = do
   for_ kvs $ \(k, v) -> do
     v' <- runConnection' (readValue tname k) conn
     v' `shouldBe` v
+
+incrementCounter :: ConnectionIO Int64
+incrementCounter = do
+  let upd = "update test_counter set value=value+1 where pk=?"
+  let sel = "select value from test_counter where pk=?"
+  execute One upd [TextValue "counter"]
+  executeQuery One sel [TextValue "counter"] >>= extractSingleRow extract
 
 spec :: Spec
 spec =
@@ -134,3 +142,7 @@ spec =
         writeAndRead conn "test_timestamp" [now']
       it "write/read inet/IPAddress values" $ \conn ->
         writeAndRead conn "test_inet" [IPAddressV4 0x7f000001]
+      it "can incrememt counter" $ \conn -> do
+        c1 <- runConnection' (useTest *> incrementCounter) conn
+        c2 <- runConnection' incrementCounter conn
+        c2 `shouldBe` (c1 + 1)

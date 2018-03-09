@@ -163,6 +163,7 @@ typedValue (DoubleValue d) = _putIntLen 8 *> putFloat64be d
 typedValue (DecimalValue i) = decimal i
 typedValue (VarintValue vi) = varint vi
 typedValue (UUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
+typedValue (TimeUUIDValue uu) = _withIntLen $ LB.toStrict (U.toByteString uu)
 typedValue (DateValue d) = _putIntLen 4 *> date d
 typedValue (TimestampValue ts) = _putIntLen 8 *> timestamp ts
 typedValue (InetValue ip) = ipAddress ip

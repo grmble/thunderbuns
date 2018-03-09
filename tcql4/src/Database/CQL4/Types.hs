@@ -17,7 +17,7 @@ import Data.Time.Calendar (Day)
 import Data.Time.Clock (DiffTime, UTCTime)
 import Data.UUID (UUID)
 import qualified Data.Vector as V
-import Data.Word (Word32, Word64)
+import Data.Word (Word32)
 
 -- | Cassandra consistency level
 data Consistency
@@ -102,7 +102,8 @@ data TypedValue
   | LongValue Int64
   | BoolValue Bool
   | BlobValue B.ByteString
-  | CounterValue Word64
+  -- for counters, we get a Long/Int64
+  -- | CounterValue Word64
   | DecimalValue Scientific.Scientific
   | DoubleValue Double
   | FloatValue Float

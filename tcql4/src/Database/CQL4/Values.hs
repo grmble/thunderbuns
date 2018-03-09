@@ -31,8 +31,8 @@ import Database.CQL4.Types
 -- in your haskell data structure.  E.g. if you use `int`,
 -- use Int32 in your data structure.
 class IsCQLValue a where
-  -- | Construct a typed value for the haskell type a
   toValue :: a -> TypedValue
+  -- ^ Construct a typed value for the haskell type a
   -- | Extract a haskell type for the typed value.
   fromValue :: TypedValue -> Either CQLException a
 
@@ -128,8 +128,8 @@ extract = do
   pure a
 
 -- | Extract the values from a row.
-extractRow :: V.Vector TypedValue -> ValueExtractorIO a -> ConnectionIO a
-extractRow = flip evalStateT
+extractRow :: ValueExtractorIO a -> V.Vector TypedValue -> ConnectionIO a
+extractRow = evalStateT
 
 -- | Error if the result is not exactly one row
 --
@@ -137,8 +137,8 @@ extractRow = flip evalStateT
 -- Extract single row asserts that the result set consists of exactly
 -- one row, then calls extractRow on it.
 extractSingleRow ::
-     [V.Vector TypedValue] -> ValueExtractorIO a -> ConnectionIO a
-extractSingleRow [v] m = extractRow v m
-extractSingleRow [] _ = throwError $ messageException "extractSingleRow.empty"
+     ValueExtractorIO a -> [V.Vector TypedValue] -> ConnectionIO a
+extractSingleRow m [v] = extractRow m v
+extractSingleRow _ [] = throwError $ messageException "extractSingleRow.empty"
 extractSingleRow _ _ =
   throwError $ messageException "extractSingleRow.moreThanOneRow"
