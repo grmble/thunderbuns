@@ -13,14 +13,14 @@ import Data.Int (Int16, Int32, Int64, Int8)
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import Data.Time.Calendar (Day)
-import Data.Time.Clock (UTCTime, DiffTime)
+import Data.Time.Clock (DiffTime, UTCTime)
 import qualified Data.UUID as U
 import qualified Data.Vector as V
+import Database.CQL4.Connection
 import Database.CQL4.Exceptions
-import Database.CQL4.Protocol
 import Database.CQL4.Types
 
--- | IsCQLValue is a type that has a Cassandra equivalent
+-- | HasToValue is a type that has a cassandra equivalent
 --
 -- Note that cassandra is strict about the types it receives -
 -- if a table column has type X, the bind parameter must be exactly
@@ -31,92 +31,131 @@ import Database.CQL4.Types
 -- in your haskell data structure.  E.g. if you use `int`,
 -- use Int32 in your data structure.
 --
--- Note that UUIDValue and TimeUUIDValue both map to haskell UUID.
--- The typeclass instance is for UUIDValue, if you want to send
--- TimeUUID you can't use toValue, use TimeUUIDValue.
-class IsCQLValue a where
+-- Regarding TimeUUIDValue: TimeUUIDValue and UUIDValue both
+-- map to UUID.  So HasToValue has to choose one, and UUIDValue
+-- was chosen.  If you have a timeduuid column, you have to use
+-- the data constructor TimeUUIDValue instead of toValue.
+class HasToValue a where
   toValue :: a -> TypedValue
-  -- ^ Construct a typed value for the haskell type a
-  -- | Extract a haskell type for the typed value.
+
+instance HasToValue T.Text where
+  toValue = TextValue
+
+instance HasToValue Integer where
+  toValue = VarintValue
+
+instance HasToValue Int64 where
+  toValue = LongValue
+
+instance HasToValue Int32 where
+  toValue = IntValue
+
+instance HasToValue Int16 where
+  toValue = SmallintValue
+
+instance HasToValue Int8 where
+  toValue = TinyintValue
+
+instance HasToValue Float where
+  toValue = FloatValue
+
+instance HasToValue Double where
+  toValue = DoubleValue
+
+instance HasToValue Scientific.Scientific where
+  toValue = DecimalValue
+
+instance HasToValue Bool where
+  toValue = BoolValue
+
+instance HasToValue B.ByteString where
+  toValue = BlobValue
+
+instance HasToValue U.UUID where
+  toValue = UUIDValue
+
+instance HasToValue Day where
+  toValue = DateValue
+
+instance HasToValue UTCTime where
+  toValue = TimestampValue
+
+instance HasToValue DiffTime where
+  toValue = TimeValue
+
+instance HasToValue IPAddress where
+  toValue = InetValue
+
+-- | HasFromValue extracts a haskell type from a cassandra TypedValue
+--
+-- This may fail - e.g. the TypedValue could be a Double, but you want
+-- a UUID. Or it's an Int32, and you want a Int64.  The design decision
+-- here was to be strict because Cassndra is strict as well when receiving
+-- values.
+class HasFromValue a where
   fromValue :: TypedValue -> Either CQLException a
 
-instance IsCQLValue T.Text where
-  toValue = TextValue
+instance HasFromValue T.Text where
   fromValue (TextValue t) = Right t
   fromValue x = Left $ fromValueException "Text" x
 
-instance IsCQLValue Integer where
-  toValue = VarintValue
+instance HasFromValue Integer where
   fromValue (VarintValue v) = Right v
   fromValue x = Left $ fromValueException "Integer" x
 
-instance IsCQLValue Int64 where
-  toValue = LongValue
+instance HasFromValue Int64 where
   fromValue (LongValue v) = Right (fromIntegral v)
   fromValue x = Left $ fromValueException "Int" x
 
-instance IsCQLValue Int32 where
-  toValue = IntValue . fromIntegral
+instance HasFromValue Int32 where
   fromValue (IntValue v) = Right (fromIntegral v)
   fromValue x = Left $ fromValueException "Int32" x
 
-instance IsCQLValue Int16 where
-  toValue = SmallintValue . fromIntegral
+instance HasFromValue Int16 where
   fromValue (SmallintValue v) = Right (fromIntegral v)
   fromValue x = Left $ fromValueException "Int16" x
 
-instance IsCQLValue Int8 where
-  toValue = TinyintValue . fromIntegral
+instance HasFromValue Int8 where
   fromValue (TinyintValue v) = Right (fromIntegral v)
   fromValue x = Left $ fromValueException "Int8" x
 
-instance IsCQLValue Float where
-  toValue = FloatValue
+instance HasFromValue Float where
   fromValue (FloatValue v) = Right v
   fromValue x = Left $ fromValueException "Float" x
 
-instance IsCQLValue Double where
-  toValue = DoubleValue
+instance HasFromValue Double where
   fromValue (DoubleValue d) = Right d
   fromValue x = Left $ fromValueException "Double" x
 
-instance IsCQLValue Scientific.Scientific where
-  toValue = DecimalValue
+instance HasFromValue Scientific.Scientific where
   fromValue (DecimalValue sc) = Right sc
   fromValue x = Left $ fromValueException "Scientific" x
 
-instance IsCQLValue Bool where
-  toValue = BoolValue
+instance HasFromValue Bool where
   fromValue (BoolValue b) = Right b
   fromValue x = Left $ fromValueException "Bool" x
 
-instance IsCQLValue B.ByteString where
-  toValue = BlobValue
+instance HasFromValue B.ByteString where
   fromValue (BlobValue bs) = Right bs
   fromValue x = Left $ fromValueException "ByteString" x
 
-instance IsCQLValue U.UUID where
-  toValue = UUIDValue
+instance HasFromValue U.UUID where
   fromValue (UUIDValue uu) = Right uu
   fromValue x = Left $ fromValueException "UUID" x
 
-instance IsCQLValue Day where
-  toValue = DateValue
+instance HasFromValue Day where
   fromValue (DateValue d) = Right d
   fromValue x = Left $ fromValueException "Day" x
 
-instance IsCQLValue UTCTime where
-  toValue = TimestampValue
+instance HasFromValue UTCTime where
   fromValue (TimestampValue ts) = Right ts
   fromValue x = Left $ fromValueException "UTCTime" x
 
-instance IsCQLValue DiffTime where
-  toValue = TimeValue
+instance HasFromValue DiffTime where
   fromValue (TimeValue t) = Right t
   fromValue x = Left $ fromValueException "DiffTime" x
 
-instance IsCQLValue IPAddress where
-  toValue = InetValue
+instance HasFromValue IPAddress where
   fromValue (InetValue ip) = Right ip
   fromValue x = Left $ fromValueException "IPAddress" x
 
@@ -128,7 +167,7 @@ instance IsCQLValue IPAddress where
 type ValueExtractorIO = StateT (V.Vector TypedValue) ConnectionIO
 
 -- | Extract the next value from the result row
-extract :: IsCQLValue a => ValueExtractorIO a
+extract :: HasFromValue a => ValueExtractorIO a
 extract = do
   vs <- get
   when (V.null vs) $ throwError $ messageException "fvIO.empty"

@@ -20,11 +20,11 @@ import qualified Data.Serialize.Put as P
 import qualified Data.Text as T
 import Data.Traversable (for)
 import qualified Data.Vector as V
+import Database.CQL4.Connection
 import Database.CQL4.Exceptions
 import qualified Database.CQL4.Internal.Get as CG
 import qualified Database.CQL4.Internal.Put as CP
 import Database.CQL4.Internal.Types
-import Database.CQL4.Protocol
 import Database.CQL4.Types
 import UnliftIO.Exception (bracket_)
 import UnliftIO.STM
@@ -167,7 +167,7 @@ putQuery q sid =
     for_ (querySerialConsistency q) CP.consistency
     for_ (queryDefaultTimestamp q) CP.timestamp
 
--- | 
+-- |
 -- | Get the next message from the server
 message :: G.Get (FrameHeader, Message)
 message = do

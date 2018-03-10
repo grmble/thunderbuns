@@ -13,11 +13,7 @@ import Data.Time.Clock
 import Data.Traversable (for)
 import qualified Data.UUID as U
 import qualified Data.UUID.V4 as V4
-import qualified Data.Vector as V
-import Database.CQL4.Connection
-import Database.CQL4.Protocol
-import Database.CQL4.Types
-import Database.CQL4.Values
+import Database.CQL4
 import System.Environment (lookupEnv)
 import Test.Hspec
 import UnliftIO.Exception (bracket)
@@ -74,7 +70,7 @@ createKSAndTables = do
 useTest :: ConnectionIO ()
 useTest = execute One "use test" []
 
-writeValues :: IsCQLValue a => T.Text -> [a] -> ConnectionIO [(U.UUID, a)]
+writeValues :: HasToValue a => T.Text -> [a] -> ConnectionIO [(U.UUID, a)]
 writeValues tname as = do
   let cql = "insert into " <> tname <> " (pk, value) values (?,?)"
   for as $ \a -> do
@@ -82,14 +78,18 @@ writeValues tname as = do
     execute One cql [toValue uuid, toValue a]
     pure (uuid, a)
 
-readValue :: IsCQLValue a => T.Text -> U.UUID -> ConnectionIO a
+readValue :: HasFromValue a => T.Text -> U.UUID -> ConnectionIO a
 readValue tname uu = do
   let cql = "select value from " <> tname <> " where pk = ?"
   rows <- executeQuery One cql [toValue uu]
   extractSingleRow extract rows
 
 writeAndRead ::
-     (Eq a, Show a, IsCQLValue a) => Connection -> T.Text -> [a] -> IO ()
+     (Eq a, Show a, HasFromValue a, HasToValue a)
+  => Connection
+  -> T.Text
+  -> [a]
+  -> IO ()
 writeAndRead conn tname vs = do
   kvs <- runConnection' (useTest *> writeValues tname vs) conn
   for_ kvs $ \(k, v) -> do

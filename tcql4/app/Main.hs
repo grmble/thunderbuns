@@ -5,9 +5,7 @@ import Data.Conduit.Network
 import Data.Foldable (for_)
 import Data.String (fromString)
 import qualified Data.Text.IO as TIO
-import Database.CQL4.Connection
-import Database.CQL4.Protocol
-import Database.CQL4.Types
+import Database.CQL4
 import System.Environment
 import UnliftIO.Exception (bracket)
 
@@ -19,12 +17,19 @@ main = do
     bracket
       (connection' hexdumpLogger app)
       (runConnection' closeConnection)
-      (runConnection' queryLines)
+      runQueryLines
 
-queryLines :: ConnectionIO ()
-queryLines = do
+runQueryLines :: Connection -> IO ()
+runQueryLines conn = do
+  rslt <- runConnection queryLine conn
+  case rslt of
+    Left err -> putStrLn ("Error: " ++ show err)
+    Right _ -> pure () -- just handle the error
+  -- and loop
+  runQueryLines conn
+
+queryLine :: ConnectionIO ()
+queryLine = do
   line <- liftIO TIO.getLine
   rows <- executeQuery One line []
   liftIO $ for_ rows print
-  -- and loop ...
-  queryLines
