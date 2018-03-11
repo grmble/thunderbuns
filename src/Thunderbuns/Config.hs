@@ -4,7 +4,6 @@
 module Thunderbuns.Config where
 
 import Control.Lens.TH (makeClassy)
-import Control.Monad.Reader
 import Data.Maybe (maybe)
 import qualified Data.Text.Lazy as LT
 import Dhall

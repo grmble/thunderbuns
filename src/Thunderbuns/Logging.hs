@@ -1,5 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-
 {- | Thunderbuns Logging
 
 Logging for haskell, bunyan style.
@@ -21,6 +19,7 @@ module Thunderbuns.Logging
   , logger
   , loggerIO
   , logRecord
+  , logRecord'
   , pureLogRecord
   , logM
   , logIO
@@ -32,6 +31,7 @@ module Thunderbuns.Logging
   , infoIO
   , debugM
   , debugIO
+  , duration
   , consoleHandler
   ) where
 
@@ -43,10 +43,12 @@ import qualified Data.Aeson.Types as AT
 import qualified Data.ByteString.Lazy.Char8 as LBSC8
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
+import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import qualified Data.Time.Clock.System as SC
 import Network.BSD (getHostName)
 import System.IO (hFlush, stdout)
+import Text.Printf (printf)
 import Text.Show.Functions ()
 import Thunderbuns.Process (getPid)
 import UnliftIO.STM
@@ -103,7 +105,9 @@ instance HasLogger Logger where
 -- | LoggerIO is ReaderT HasLogger in the IO monad
 --
 -- Actually it's MonadIO so could be ExceptT x IO
-type LoggerIO h m a = (MonadIO m, HasLogger h) => ReaderT h m a
+type LoggerIO h m a
+   = (MonadIO m, HasLogger h) =>
+       ReaderT h m a
 
 -- | Console handler function - prints to console
 consoleHandler :: LogRecord -> IO ()
@@ -138,7 +142,6 @@ rootLogger n p h = do
     , priorityMap = priMap
     , loggerNames = logSet
     }
-
 
 -- | Create a child logger with the given name and default properties
 --
@@ -179,16 +182,20 @@ pureLogRecord pri obj msg lg = PureLogRecord $ decorate (context lg)
       M.insert "level" (A.Number $ fromIntegral $ intPriority pri) .
       M.insert "msg" (A.String msg) . M.union obj
 
-{-- | A log record also has a time and everything from the root context.
---}
+-- | A log record also has a time and everything from the root context.
 newtype LogRecord =
   LogRecord AT.Object
   deriving (Show, Eq)
 
 logRecord :: MonadIO m => PureLogRecord -> Logger -> m LogRecord
-logRecord (PureLogRecord obj) lg = do
+logRecord obj lg = do
   t <- liftIO SC.getSystemTime
-  return $ LogRecord $ decorate t (context lg)
+  logRecord' t obj lg
+
+logRecord' ::
+     MonadIO m => SC.SystemTime -> PureLogRecord -> Logger -> m LogRecord
+logRecord' tm (PureLogRecord obj) lg =
+  pure $ LogRecord $ decorate tm (context lg)
   where
     decorate t =
       M.union obj .
@@ -200,6 +207,19 @@ logM pri obj msg lg = do
   let pri' = intPriority pri
   when (pri' >= priority lg) $
     logRecord (pureLogRecord pri obj msg lg) lg >>= liftIO . handler lg
+
+duration :: MonadIO m => SC.SystemTime -> m (AT.Object, T.Text)
+duration start = do
+  end <- liftIO SC.getSystemTime
+  let dur = double end - double start
+  let ctx = M.singleton "duration" (AT.Number $ Scientific.fromFloatDigits dur)
+  let msg = T.pack $ printf "completed in %dms" ((round $ 1000 * dur) :: Int)
+  pure (ctx, msg)
+  where
+    double :: SC.SystemTime -> Double
+    double sc =
+      fromIntegral (SC.systemSeconds sc) +
+      fromIntegral (SC.systemNanoseconds sc) / 1e9
 
 infoM :: T.Text -> Logger -> IO ()
 infoM = logM INFO M.empty

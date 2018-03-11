@@ -31,6 +31,8 @@ dependencies:
 - network
 - scientific
 - servant-server
+- prometheus-client
+- prometheus-metrics-ghc
 - text
 - time
 - tprocess
@@ -39,6 +41,7 @@ dependencies:
 - unordered-containers
 - wai
 - wai-app-static
+- wai-middleware-prometheus
 - warp
 
 library:
@@ -52,6 +55,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -with-rtsopts=-T
     dependencies:
     - thunderbuns
 
