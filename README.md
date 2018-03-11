@@ -17,3 +17,9 @@
 * cmdargs to parse command line
 * ipfs ??? global shared filesystem ?
 * purescript bindings via https://github.com/eskimor/servant-purescript
+
+
+## inspiration
+
+* gokit, especially metrics and logging: 
+  https://godoc.org/github.com/go-kit/kit/metrics

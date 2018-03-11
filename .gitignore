@@ -8,4 +8,9 @@
 .DS_Store
 .hsenv*
 .stack-work/
+.stack-work/
+/*.cabal
 /config
+/dist
+TAGS
+x.*

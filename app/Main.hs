@@ -1,17 +1,19 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Main where
 
-import Lib
-import Thunderbuns.Config.CmdLine
-import Thunderbuns.Config (port, readConfig)
-import Thunderbuns.Logging (consoleHandler, rootLogger)
+import Control.Lens (view)
+import Control.Monad.Reader (runReaderT)
+import Thunderbuns.Config
+import Thunderbuns.Logging
+import Thunderbuns.Server
 
--- main :: IO ()
--- main = startApp
-
-
+main :: IO ()
 main = do
   cfg <- readConfig
-  root <- rootLogger "thunderbuns" consoleHandler
-  startApp (fromInteger (port cfg)) root
+  let pri =
+        if view debug cfg
+          then DEBUG
+          else INFO
+  root <- rootLogger "thunderbuns" pri consoleHandler
+  runReaderT startApp (Env cfg root)
