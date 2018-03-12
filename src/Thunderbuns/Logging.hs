@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {- | Thunderbuns Logging
 
 Logging for haskell, bunyan style.
@@ -18,6 +19,8 @@ module Thunderbuns.Logging
   , rootLogger
   , logger
   , loggerIO
+  , loggerNamesL
+  , priorityMapL
   , logRecord
   , logRecord'
   , pureLogRecord
@@ -40,6 +43,7 @@ import Control.Monad (unless, when)
 import Control.Monad.Reader
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Types as AT
+import qualified Data.Aeson.TH as ATH
 import qualified Data.ByteString.Lazy.Char8 as LBSC8
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
@@ -61,6 +65,8 @@ data Priority
   | DEBUG
   | TRACE
   deriving (Show, Eq)
+
+$(ATH.deriveJSON A.defaultOptions ''Priority)
 
 intPriority :: Priority -> Int
 intPriority FATAL = 60
@@ -101,6 +107,12 @@ class HasLogger a where
 
 instance HasLogger Logger where
   loggerL = id
+
+loggerNamesL :: Lens' Logger (TVar (S.HashSet T.Text))
+loggerNamesL k lg = fmap (\x -> lg { loggerNames = x }) (k (loggerNames lg))
+
+priorityMapL :: Lens' Logger (TVar (M.HashMap T.Text Priority))
+priorityMapL k lg = fmap (\x -> lg { priorityMap = x }) (k (priorityMap lg))
 
 -- | LoggerIO is ReaderT HasLogger in the IO monad
 --

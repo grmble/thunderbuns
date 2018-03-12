@@ -1,11 +1,15 @@
 # thunderbuns
 
+Chat server "vaporware"
+
+It's really an excuse to play around with various technologies
+
 ## infrastructure
 
 * scylladb as database
 * etcd as waitable endpoint
 * minio for blob storage
-* solr as search engine .. or maybe something lighter?
+* solr or es as search engine .. or maybe something lighter?
 
 ## haskell libraries
 

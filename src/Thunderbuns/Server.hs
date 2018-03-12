@@ -22,16 +22,7 @@ import Servant
 import Thunderbuns.Config
 import Thunderbuns.Config.Server (HasServerConfig, port, staticRoot)
 import Thunderbuns.Logging
-
-type DebugAPI = Get '[ JSON] [T.Text] -- list debug levels
-
-debugAPI :: Proxy DebugAPI
-debugAPI = Proxy
-
-debugServerT :: ServerT DebugAPI (ReaderT Env Handler)
-debugServerT = do
-  debugIO "debug server entered"
-  pure ["asdf", "jkl"]
+import Thunderbuns.Server.Debug
 
 debugServer :: Env -> Server DebugAPI
 debugServer e = hoistServer debugAPI (toHandler e) debugServerT

@@ -30,6 +30,7 @@ dependencies:
 - mtl
 - network
 - scientific
+- servant
 - servant-server
 - prometheus-client
 - prometheus-metrics-ghc
