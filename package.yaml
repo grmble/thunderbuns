@@ -22,6 +22,7 @@ description:         Please see the README on Github at <https://github.com/grmb
 dependencies:
 - base >= 4.10 && < 5
 - aeson
+- attoparsec
 - bytestring
 - cmdargs
 - dhall
@@ -38,6 +39,7 @@ dependencies:
 - time
 - tprocess
 - tcql4
+- transformers
 - unliftio
 - unordered-containers
 - wai
