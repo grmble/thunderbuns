@@ -1,13 +1,14 @@
 # need nightly for dhall 1.11 (2018-03-10), but it's not in f*cking 2018-03-12
 # need more recent nightly for servant 1.13 - streaming support (2018-03-12)
-resolver: nightly-2018-03-12
+# lts-11.5 should workd (2018-04-21)
+resolver: lts-11.5
 
 packages:
 - .
 
 extra-deps: 
-- dhall-1.11.0
-- ansi-terminal-0.7.1.1
+# - dhall-1.11.0
+# - ansi-terminal-0.7.1.1
 - git: https://github.com/grmble/tprocess.git
   commit: 06e76c2ab709d2f2326498b1d3cca6f830dc0a1c
 - git: https://github.com/grmble/tcql4.git

@@ -33,18 +33,24 @@ module Thunderbuns.Validate
   , unV
   , validate
   , validate'
+  , validateM
   , enumValidator
   , inRange
   , symbolValidator
   , symbolValidator'
   , textValidator
+  , appmsg
   ) where
 
 import Control.Applicative.Lift
+import Control.Monad.Reader
 import Data.Attoparsec.Text
 import Data.Char
 import qualified Data.List as L
 import qualified Data.Text as T
+import Thunderbuns.Exceptions
+import Thunderbuns.Logging
+import UnliftIO.Exception (throwIO)
 
 -- | A newtype for a validated value.
 newtype V a =
@@ -66,6 +72,15 @@ validate' msg v a = V <$> runErrors (v msg a)
 -- | Validation using the default validator for a type.
 validate :: DefaultValidator a => a -> Either [ValidationError] (V a)
 validate = validate' Nothing defaultValidator
+
+-- | Validate using default validator in RIO
+--
+-- validation errors will be thrown as ValidationException
+validateM :: DefaultValidator a => a -> ReaderT e IO (V a)
+validateM a =
+  case validate a of
+    Left err -> throwIO $ validationException err
+    Right va -> pure va
 
 -- | Most basic types are safe, so they have instances
 --
@@ -168,3 +183,8 @@ textValidator str a = parsingValidator (fst <$> match textParser) str stripped
       _ <- charParser
       _ <- greedyParser
       endOfInput <?> msg
+
+-- | Combine validator messages
+appmsg :: Maybe String -> String -> Maybe String
+appmsg Nothing msg = Just msg
+appmsg (Just msg1) msg = Just (msg1 ++ "/" ++ msg)

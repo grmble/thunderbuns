@@ -23,8 +23,9 @@ dependencies:
 - base >= 4.10 && < 5
 - aeson
 - attoparsec
+- base64-bytestring
 - bytestring
-- cmdargs
+- cryptonite
 - dhall
 - http-types
 - lens  # it's pulled in by dhall (i think), we might as well use it
@@ -33,8 +34,10 @@ dependencies:
 - scientific
 - servant
 - servant-server
+- optparse-applicative
 - prometheus-client
 - prometheus-metrics-ghc
+- streaming-commons
 - text
 - time
 - tprocess
