@@ -10,6 +10,7 @@ import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import qualified Data.Text as T
+import Jose.Jwt (JwtClaims)
 import Servant
 import Thunderbuns.Logging
 import UnliftIO.STM
@@ -29,8 +30,9 @@ type DebugAPI
 debugAPI :: Proxy DebugAPI
 debugAPI = Proxy
 
-debugServerT :: (HasLogger h) => ServerT DebugAPI (ReaderT h Handler)
-debugServerT = listLogLevels :<|> modifyLogLevels
+debugServerT ::
+     (HasLogger h) => JwtClaims -> ServerT DebugAPI (ReaderT h Handler)
+debugServerT _ = listLogLevels :<|> modifyLogLevels
   where
     listLogLevels :: (HasLogger h) => ReaderT h Handler LogLevels
     listLogLevels = do
@@ -39,12 +41,12 @@ debugServerT = listLogLevels :<|> modifyLogLevels
       priMapTV <- asks (view $ loggerL . priorityMapL)
       priMap <- readTVarIO priMapTV
       pure $ foldr (\n -> M.insert n (M.lookup n priMap)) M.empty names
-
     modifyLogLevels :: (HasLogger h) => LogLevels -> ReaderT h Handler NoContent
     modifyLogLevels lls = do
       namesTV <- asks (view $ loggerL . loggerNamesL)
       priMapTV <- asks (view $ loggerL . priorityMapL)
-      for_ (M.toList lls) $ \(n, mpri) -> atomically $ do
-        modifyTVar namesTV (S.insert n)
-        modifyTVar priMapTV (M.alter (const mpri) n)
+      for_ (M.toList lls) $ \(n, mpri) ->
+        atomically $ do
+          modifyTVar namesTV (S.insert n)
+          modifyTVar priMapTV (M.alter (const mpri) n)
       pure NoContent

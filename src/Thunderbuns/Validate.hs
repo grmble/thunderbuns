@@ -48,8 +48,7 @@ import Data.Attoparsec.Text
 import Data.Char
 import qualified Data.List as L
 import qualified Data.Text as T
-import Thunderbuns.Exceptions
-import Thunderbuns.Logging
+import Thunderbuns.Exception
 import UnliftIO.Exception (throwIO)
 
 -- | A newtype for a validated value.
@@ -76,7 +75,7 @@ validate = validate' Nothing defaultValidator
 -- | Validate using default validator in RIO
 --
 -- validation errors will be thrown as ValidationException
-validateM :: DefaultValidator a => a -> ReaderT e IO (V a)
+validateM :: (DefaultValidator a, MonadIO m) => a -> ReaderT e m (V a)
 validateM a =
   case validate a of
     Left err -> throwIO $ validationException err

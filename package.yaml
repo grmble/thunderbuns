@@ -23,20 +23,26 @@ dependencies:
 - base >= 4.10 && < 5
 - aeson
 - attoparsec
+- base16-bytestring
 - base64-bytestring
 - bytestring
 - cryptonite
 - dhall
 - http-types
+- jose-jwt
 - lens  # it's pulled in by dhall (i think), we might as well use it
 - mtl
 - network
-- scientific
-- servant
-- servant-server
 - optparse-applicative
 - prometheus-client
 - prometheus-metrics-ghc
+- purescript-bridge
+- scientific
+- servant
+- servant-foreign
+- servant-server
+- servant-subscriber
+- servant-purescript
 - streaming-commons
 - text
 - time

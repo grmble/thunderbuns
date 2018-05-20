@@ -7,7 +7,7 @@ import Thunderbuns.Config
 import Database.CQL4
 
 
-initDB :: HasDbConnection e => ReaderT e IO ()
+initDB :: (HasDbConnection e, MonadIO m) => ReaderT e m ()
 initDB = do
   dbc <- ask >>= dbConnection
   liftIO $ runConnection' initDB' dbc

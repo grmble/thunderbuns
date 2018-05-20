@@ -56,6 +56,7 @@ import Text.Printf (printf)
 import Text.Show.Functions ()
 import Thunderbuns.Process (getPid)
 import UnliftIO.STM
+import GHC.Generics
 
 data Priority
   = FATAL
@@ -64,7 +65,7 @@ data Priority
   | INFO
   | DEBUG
   | TRACE
-  deriving (Show, Eq)
+  deriving (Generic, Show, Eq)
 
 $(ATH.deriveJSON A.defaultOptions ''Priority)
 

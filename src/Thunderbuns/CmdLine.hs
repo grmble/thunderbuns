@@ -1,18 +1,22 @@
 module Thunderbuns.CmdLine where
 
 import Control.Lens (view)
+import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
 import Data.Semigroup ((<>))
-import qualified Data.Text as T
 import Options.Applicative
+import Servant.Server
 import Thunderbuns.Config
 import Thunderbuns.DB.Init
 import Thunderbuns.DB.Internal
 import Thunderbuns.DB.User
+import Thunderbuns.GenPS
 import Thunderbuns.Logging
 import Thunderbuns.Server
+import Thunderbuns.Server.User
 import Thunderbuns.Validate
 import UnliftIO.Concurrent (forkIO)
+import UnliftIO.Exception (throwIO)
 import UnliftIO.STM
 
 parseCommandLine :: ReaderT Env IO ()
@@ -25,15 +29,30 @@ parseCommandLine =
            (fullDesc <>
             header "thunderbuns - producing hot air for fun and profit" <>
             progDesc "Start a server or perform administrative commands"))
-    runReaderT r e
+    x <- runExceptT $ runHandler' $ runReaderT r e
+    case x of
+      Left err -> print err
+      Right () -> pure ()
   where
     commandParser =
       hsubparser
         (command
            "serve"
            (info (pure startApp) (progDesc "Run the server on PORT")) <>
-         command "user" (info userParser (progDesc "Add or authorize users")) <>
-         command "db" (info dbParser (progDesc "Database administration")))
+         command "db" (info dbParser (progDesc "Database administration")) <>
+         command "gen" (info genParser (progDesc "Generate code or secrets")) <>
+         command "user" (info userParser (progDesc "Add or authorize users")))
+    genParser =
+      hsubparser
+        (command
+           "secret"
+           (info (pure generateSecret) (progDesc "Generate a random secret")) <>
+         command
+           "purescript"
+           (info
+              (pure (liftIO generatePurescript))
+              (progDesc "Generate Purescript client code")))
+    generateSecret = liftIO (randomSecret >>= print)
     userParser =
       hsubparser
         (command
@@ -54,11 +73,8 @@ parseCommandLine =
       pure $ validateM up >>= addUser
     authUserParser = do
       up <- nameAndPass
-      pure $ validateM up >>= logAuthorize
-    logAuthorize x = do
-      rc <- authorize x
-      infoIO ("authorize: " <> T.pack (show rc))
-      pure ()
+      pure $
+        validateM up >>= Thunderbuns.Server.User.authenticate >>= liftIO . print
     dbParser =
       hsubparser
         (command
@@ -80,3 +96,13 @@ initialEnv = do
   let e = Env cfg root dbc
   _ <- forkIO $ runReaderT superviseConnection e
   pure e
+
+runTB :: ReaderT Env Handler a -> Env -> IO (Either ServantErr a)
+runTB m e = runExceptT $ runHandler' $ runReaderT m e
+
+runTB' :: ReaderT Env Handler a -> IO a
+runTB' m = do
+  x <- initialEnv >>= runTB m
+  case x of
+    Left err -> throwIO err
+    Right a -> pure a

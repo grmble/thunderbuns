@@ -13,6 +13,7 @@ import Dhall
 import System.Environment (lookupEnv)
 import qualified Thunderbuns.Config.DB as DBConf
 import qualified Thunderbuns.Config.Server as SConf
+import qualified Thunderbuns.Config.Jwt as JConf
 import Thunderbuns.Logging
 import UnliftIO.STM (TMVar, atomically, readTMVar)
 
@@ -22,6 +23,7 @@ import UnliftIO.STM (TMVar, atomically, readTMVar)
 data Config = Config
   { _server :: SConf.ServerConfig
   , _db :: DBConf.DbConfig
+  , _jwt :: JConf.JwtConfig
   , _debug :: Bool
   } deriving (Generic, Show)
 
@@ -60,6 +62,9 @@ instance SConf.HasServerConfig Env where
 
 instance DBConf.HasDbConfig Env where
   dbConfig = envConfig . db
+
+instance JConf.HasJwtConfig Env where
+  jwtConfig = envConfig . jwt
 
 instance HasLogger Env where
   loggerL = envLogger

@@ -12,6 +12,7 @@ import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Time.Clock.System as SC
+import Jose.Jwt
 import Network.HTTP.Types (statusCode)
 import Network.Wai (rawPathInfo, responseStatus)
 import Network.Wai.Handler.Warp
@@ -19,13 +20,26 @@ import Network.Wai.Middleware.Prometheus (def, prometheus)
 import Prometheus (register)
 import Prometheus.Metric.GHC (ghcMetrics)
 import Servant
+import Servant.Server.Experimental.Auth
 import Thunderbuns.Config
 import Thunderbuns.Config.Server (HasServerConfig, port, staticRoot)
 import Thunderbuns.Logging
 import Thunderbuns.Server.Debug
+import Thunderbuns.Server.User
 
-debugServer :: Env -> Server DebugAPI
-debugServer e = hoistServer debugAPI (toHandler e) debugServerT
+authServer :: Env -> Server UserAPI
+authServer e  = hoistServer userAPI (toHandler e) userServerT
+
+debugServer :: Env -> JwtClaims -> Server DebugAPI
+debugServer e cs = hoistServer debugAPI (toHandler e) (debugServerT cs)
+
+type WebAPI = "auth" :> UserAPI :<|> "debug" :> AuthProtect "jwt-auth" :> DebugAPI
+
+webAPI :: Proxy WebAPI
+webAPI = Proxy
+
+webServer :: Env -> Server WebAPI
+webServer e = authServer e :<|> debugServer e
 
 type StaticAPI = Raw
 
@@ -35,15 +49,16 @@ staticAPI = Proxy
 staticServer :: (HasServerConfig e) => e -> Server StaticAPI
 staticServer e = serveDirectoryWebApp (T.unpack $ view staticRoot e)
 
-type CombinedAPI = "debug" :> DebugAPI :<|> "static" :> StaticAPI
+type CombinedAPI
+   = WebAPI :<|> "static" :> StaticAPI
 
 combinedAPI :: Proxy CombinedAPI
 combinedAPI = Proxy
 
 combinedServer :: Env -> Server CombinedAPI
-combinedServer e = debugServer e :<|> staticServer e
+combinedServer e = webServer e :<|> staticServer e
 
-startApp :: ReaderT Env IO ()
+startApp :: MonadIO m => ReaderT Env m ()
 startApp
   -- register ghc metrics - needs +RTS -T
  = do
@@ -60,7 +75,8 @@ startApp
       -- duration logging, request url context
       logware e $
       -- combined servant api
-       \e' -> serve combinedAPI (combinedServer e')
+       \e' -> serveWithContext combinedAPI (jwtContext e') (combinedServer e')
+    jwtContext e = jwtAuthHandler e :. EmptyContext
     logware e appE req respond = do
       start <- SC.getSystemTime
       let ctx =
@@ -87,3 +103,6 @@ startApp
 
 toHandler :: e -> ReaderT e Handler a -> Handler a
 toHandler e r = runReaderT r e
+
+-- | We need to specify the data returned after authentication
+type instance AuthServerData (AuthProtect "jwt-auth") = JwtClaims

@@ -12,7 +12,8 @@ import UnliftIO.Exception (bracket)
 import UnliftIO.STM (atomically, putTMVar)
 
 -- XXX: should be in tcql4
-withConnection :: HasDbConfig e => (Connection -> IO ()) -> ReaderT e IO ()
+withConnection ::
+     (HasDbConfig e, MonadIO m) => (Connection -> IO ()) -> ReaderT e m ()
 withConnection f = do
   e <- ask
   let p = fromIntegral $ view (dbConfig . port) e
@@ -29,7 +30,7 @@ withConnection f = do
 --
 -- XXX: response parsing should be happening in the supervisor thread
 superviseConnection ::
-     (HasDbConfig e, HasDbConnection e) => ReaderT e IO ()
+     (HasDbConfig e, HasDbConnection e, MonadIO m) => ReaderT e m ()
 superviseConnection = do
   e <- ask
   withConnection $ \conn -> do
