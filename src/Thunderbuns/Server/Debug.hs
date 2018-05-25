@@ -15,7 +15,7 @@ import Servant
 import Thunderbuns.Logging
 import UnliftIO.STM
 
-type LogLevels = M.HashMap T.Text (Maybe Priority)
+type LogLevels = [(T.Text, Maybe Priority)]
 
 type DebugAPI
    -- list log levels
@@ -40,12 +40,12 @@ debugServerT _ = listLogLevels :<|> modifyLogLevels
       names <- readTVarIO namesTV
       priMapTV <- asks (view $ loggerL . priorityMapL)
       priMap <- readTVarIO priMapTV
-      pure $ foldr (\n -> M.insert n (M.lookup n priMap)) M.empty names
+      pure $ M.toList $ foldr (\n -> M.insert n (M.lookup n priMap)) M.empty names
     modifyLogLevels :: (HasLogger h) => LogLevels -> ReaderT h Handler NoContent
     modifyLogLevels lls = do
       namesTV <- asks (view $ loggerL . loggerNamesL)
       priMapTV <- asks (view $ loggerL . priorityMapL)
-      for_ (M.toList lls) $ \(n, mpri) ->
+      for_ lls $ \(n, mpri) ->
         atomically $ do
           modifyTVar namesTV (S.insert n)
           modifyTVar priMapTV (M.alter (const mpri) n)

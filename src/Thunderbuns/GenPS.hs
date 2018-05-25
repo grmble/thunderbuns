@@ -12,10 +12,14 @@ import Servant.PureScript
 import Thunderbuns.DB.User
 import Thunderbuns.Logging
 import Thunderbuns.Server
+import Thunderbuns.Server.User
 
 myTypes :: [SumType 'Haskell]
 myTypes =
-  [mkSumType (Proxy :: Proxy UserPass), mkSumType (Proxy :: Proxy Priority)]
+  [ mkSumType (Proxy :: Proxy UserPass)
+  , mkSumType (Proxy :: Proxy Token)
+  , mkSumType (Proxy :: Proxy Priority)
+  ]
 
 generatePurescript :: IO ()
 generatePurescript = do
@@ -26,17 +30,27 @@ generatePurescript = do
 -- | Move the types from Thunderbuns.Logging to Thunderbuns.WebAPI.Types
 fixTypesModule :: BridgePart
 fixTypesModule = do
-  typeModule ^== "Thunderbuns.Logging" <|> typeModule ^== "Thunderbuns.DB.User"
+  typeModule ^== "Thunderbuns.Logging" <|> typeModule ^== "Thunderbuns.DB.User" <|>
+    typeModule ^== "Thunderbuns.Server.User"
   t <- view haskType
   TypeInfo (_typePackage t) "Thunderbuns.WebAPI.Types" (_typeName t) <$>
     psTypeParameters
+
+-- | Substitue Map in generated API for HashMap String
+--
+-- XXX does not work - complains about "no generic for X"
+fixHashmap :: BridgePart
+fixHashmap = do
+  typeName ^== "HashMap"
+  typeModule ^== "Data.HashMap" <|> typeModule ^== "Data.HashMap.Base"
+  TypeInfo "purescript-maps" "Data.Map" "Map" <$> psTypeParameters
 
 -- | Set the PS api module to Thunderbuns.WebAPI
 mySettings :: Settings
 mySettings = set apiModuleName "Thunderbuns.WebAPI" defaultSettings
 
 myBridge :: BridgePart
-myBridge = defaultBridge <|> fixTypesModule
+myBridge = defaultBridge <|> fixTypesModule <|> fixHashmap
 
 data MyBridge
 

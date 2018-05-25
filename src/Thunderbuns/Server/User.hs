@@ -20,6 +20,7 @@ import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
+import GHC.Generics
 import Jose.Jwa (JwsAlg(..))
 import Jose.Jws (hmacDecode, hmacEncode)
 import Jose.Jwt
@@ -35,7 +36,7 @@ import Thunderbuns.Validate
 
 newtype Token = Token
   { token :: T.Text
-  } deriving (Show, Eq)
+  } deriving (Generic, Show, Eq)
 
 $(ATH.deriveJSON ATH.defaultOptions ''Token)
 
@@ -124,7 +125,10 @@ decodeToken' tk t s = do
     then Left "token expired"
     else Right c
 
-decodeToken :: (HasJwtConfig e, HasLogger e) => B.ByteString -> ReaderT e Handler JwtClaims
+decodeToken ::
+     (HasJwtConfig e, HasLogger e)
+  => B.ByteString
+  -> ReaderT e Handler JwtClaims
 decodeToken tk = do
   t <- liftIO getPOSIXTime
   s <- decodeJwtSecret
@@ -176,9 +180,10 @@ jwtAuthHandler' req = do
       (authorizationDenied "can not find authorization header")
       (L.lookup hAuthorization (requestHeaders req))
   debugIO ("Authorization header: " <> TE.decodeUtf8 auth)
-  tk <- case Atto.parseOnly bearer auth of
-    Left err -> authorizationDenied $ T.pack err
-    Right x -> pure x
+  tk <-
+    case Atto.parseOnly bearer auth of
+      Left err -> authorizationDenied $ T.pack err
+      Right x -> pure x
   debugIO ("JWT from header: " <> TE.decodeUtf8 tk)
   decodeToken tk
   where
