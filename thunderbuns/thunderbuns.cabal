@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: da003f3287f6c0bd03ae31b8ee0e3cb9e76784309c11b2369f25391848be6a0b
+-- hash: 947a703b7a10fbe9fcfef188a03d063fc32200b85fda8159d1ab5e58cb13989d
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -57,7 +57,7 @@ library
     , tcql4
     , text
     , time
-    , tprocess
+    , tlogger
     , transformers
     , unliftio
     , unordered-containers
@@ -77,7 +77,6 @@ library
       Thunderbuns.DB.User
       Thunderbuns.Exception
       Thunderbuns.GenPS
-      Thunderbuns.Logging
       Thunderbuns.Server
       Thunderbuns.Server.Debug
       Thunderbuns.Server.User
@@ -121,7 +120,7 @@ executable thunderbuns-exe
     , text
     , thunderbuns
     , time
-    , tprocess
+    , tlogger
     , transformers
     , unliftio
     , unordered-containers
@@ -173,7 +172,7 @@ test-suite thunderbuns-test
     , text
     , thunderbuns
     , time
-    , tprocess
+    , tlogger
     , transformers
     , unliftio
     , unordered-containers

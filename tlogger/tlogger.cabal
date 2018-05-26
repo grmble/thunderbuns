@@ -2,9 +2,9 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: aa736413e38658a6716948d757f1f11988fa4b179dc9d211b776bf9ab04bf922
+-- hash: 174da1ebed20c93c7770b039636bd0f074822a4c2519728a5671aabba3aa1adc
 
-name:           hexdump-xxd
+name:           tlogger
 version:        0.1.0.0
 description:    Please see the README on Github at <https://github.com/grmble/thunderbuns#readme>
 homepage:       https://github.com/grmble/thunderbuns#readme
@@ -30,16 +30,26 @@ library
   default-extensions: ApplicativeDo BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveFoldable DeriveFunctor DeriveGeneric DeriveLift DeriveTraversable DerivingStrategies EmptyCase ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses MultiWayIf NamedFieldPuns OverloadedStrings PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeFamilyDependencies TypeOperators
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   build-depends:
-      base >=4.10 && <5
-    , base16-bytestring
+      aeson
+    , base >=4.10 && <5
     , bytestring
+    , mtl
+    , network
+    , picolens
+    , scientific
+    , text
+    , tfreetime
+    , time
+    , tprocess
+    , unliftio
+    , unordered-containers
   exposed-modules:
-      Data.ByteString.Hexdump
+      Thunderbuns.Logging
   other-modules:
-      Paths_hexdump_xxd
+      Paths_tlogger
   default-language: Haskell2010
 
-test-suite hexdump-xxd-test
+test-suite tlogger-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   hs-source-dirs:
@@ -48,12 +58,21 @@ test-suite hexdump-xxd-test
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck
+    , aeson
     , base >=4.10 && <5
-    , base16-bytestring
     , bytestring
-    , hexdump-xxd
     , hspec
+    , mtl
+    , network
+    , picolens
+    , scientific
+    , text
+    , tfreetime
+    , time
+    , tlogger
+    , tprocess
+    , unliftio
+    , unordered-containers
   other-modules:
-      HexdumpSpec
-      Paths_hexdump_xxd
+      Paths_tlogger
   default-language: Haskell2010

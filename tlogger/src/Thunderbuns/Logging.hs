@@ -38,7 +38,7 @@ module Thunderbuns.Logging
   , consoleHandler
   ) where
 
-import Control.Lens (Lens', view)
+import Control.Lens.PicoLens (Lens', view)
 import Control.Monad (unless, when)
 import Control.Monad.Reader
 import qualified Data.Aeson as A
