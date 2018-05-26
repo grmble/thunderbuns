@@ -8,12 +8,11 @@ packages:
 - picolens
 - tfreetime
 - tlogger
+- tprocess
 - thunderbuns
 
 extra-deps: 
 # - dhall-1.11.0
 # - ansi-terminal-0.7.1.1
-- git: https://github.com/grmble/tprocess.git
-  commit: 06e76c2ab709d2f2326498b1d3cca6f830dc0a1c
 - git: https://github.com/grmble/tcql4.git
   commit: 32fc43f0ceae87ec2e295916b72c428ce4a8476e
