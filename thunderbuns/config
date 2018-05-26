@@ -1,0 +1,18 @@
+{ db =
+  { port = 9042
+  , host = "192.168.56.3"
+  , passwdOptions =
+    { iterations = 1
+    , memory = 140000
+    , parallelism = 4
+    }
+  }
+, jwt =
+  { secret = "1235"
+  , lifetime = 3600
+  }
+, server =
+  { port = 1337
+  , staticRoot = "../dist/static" }
+, debug = True
+}

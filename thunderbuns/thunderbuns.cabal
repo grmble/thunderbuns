@@ -1,0 +1,188 @@
+-- This file has been generated from package.yaml by hpack version 0.20.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: da003f3287f6c0bd03ae31b8ee0e3cb9e76784309c11b2369f25391848be6a0b
+
+name:           thunderbuns
+version:        0.1.0.0
+description:    Please see the README on Github at <https://github.com/grmble/thunderbuns#readme>
+homepage:       https://github.com/grmble/thunderbuns#readme
+bug-reports:    https://github.com/grmble/thunderbuns/issues
+author:         Juergen Gmeiner
+maintainer:     spamless.juergen@gmail.com
+copyright:      (c) 2018 Juergen Gmeiner
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/grmble/thunderbuns
+
+library
+  hs-source-dirs:
+      src
+  default-extensions: ApplicativeDo BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveFoldable DeriveFunctor DeriveGeneric DeriveLift DeriveTraversable DerivingStrategies EmptyCase ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses MultiWayIf NamedFieldPuns OverloadedStrings PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeFamilyDependencies TypeOperators
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  build-depends:
+      aeson
+    , attoparsec
+    , base >=4.10 && <5
+    , base16-bytestring
+    , base64-bytestring
+    , bytestring
+    , cryptonite
+    , dhall
+    , http-types
+    , jose-jwt
+    , lens
+    , mtl
+    , network
+    , optparse-applicative
+    , prometheus-client
+    , prometheus-metrics-ghc
+    , purescript-bridge
+    , scientific
+    , servant
+    , servant-foreign
+    , servant-purescript
+    , servant-server
+    , servant-subscriber
+    , streaming-commons
+    , tcql4
+    , text
+    , time
+    , tprocess
+    , transformers
+    , unliftio
+    , unordered-containers
+    , wai
+    , wai-app-static
+    , wai-middleware-prometheus
+    , warp
+  exposed-modules:
+      Lib
+      Thunderbuns.CmdLine
+      Thunderbuns.Config
+      Thunderbuns.Config.DB
+      Thunderbuns.Config.Jwt
+      Thunderbuns.Config.Server
+      Thunderbuns.DB.Init
+      Thunderbuns.DB.Internal
+      Thunderbuns.DB.User
+      Thunderbuns.Exception
+      Thunderbuns.GenPS
+      Thunderbuns.Logging
+      Thunderbuns.Server
+      Thunderbuns.Server.Debug
+      Thunderbuns.Server.User
+      Thunderbuns.Validate
+  other-modules:
+      Paths_thunderbuns
+  default-language: Haskell2010
+
+executable thunderbuns-exe
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  default-extensions: ApplicativeDo BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveFoldable DeriveFunctor DeriveGeneric DeriveLift DeriveTraversable DerivingStrategies EmptyCase ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses MultiWayIf NamedFieldPuns OverloadedStrings PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeFamilyDependencies TypeOperators
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -with-rtsopts=-T
+  build-depends:
+      aeson
+    , attoparsec
+    , base >=4.10 && <5
+    , base16-bytestring
+    , base64-bytestring
+    , bytestring
+    , cryptonite
+    , dhall
+    , http-types
+    , jose-jwt
+    , lens
+    , mtl
+    , network
+    , optparse-applicative
+    , prometheus-client
+    , prometheus-metrics-ghc
+    , purescript-bridge
+    , scientific
+    , servant
+    , servant-foreign
+    , servant-purescript
+    , servant-server
+    , servant-subscriber
+    , streaming-commons
+    , tcql4
+    , text
+    , thunderbuns
+    , time
+    , tprocess
+    , transformers
+    , unliftio
+    , unordered-containers
+    , wai
+    , wai-app-static
+    , wai-middleware-prometheus
+    , warp
+  other-modules:
+      Paths_thunderbuns
+  default-language: Haskell2010
+
+test-suite thunderbuns-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs:
+      test
+  default-extensions: ApplicativeDo BangPatterns ConstraintKinds DataKinds DefaultSignatures DeriveFoldable DeriveFunctor DeriveGeneric DeriveLift DeriveTraversable DerivingStrategies EmptyCase ExistentialQuantification FlexibleContexts FlexibleInstances FunctionalDependencies GADTs GeneralizedNewtypeDeriving InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses MultiWayIf NamedFieldPuns OverloadedStrings PatternSynonyms RankNTypes ScopedTypeVariables StandaloneDeriving TupleSections TypeApplications TypeFamilies TypeFamilyDependencies TypeOperators
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      QuickCheck
+    , aeson
+    , attoparsec
+    , base >=4.10 && <5
+    , base16-bytestring
+    , base64-bytestring
+    , bytestring
+    , cryptonite
+    , dhall
+    , hspec
+    , hspec-wai
+    , hspec-wai-json
+    , http-types
+    , jose-jwt
+    , lens
+    , mtl
+    , network
+    , optparse-applicative
+    , prometheus-client
+    , prometheus-metrics-ghc
+    , purescript-bridge
+    , scientific
+    , servant
+    , servant-foreign
+    , servant-purescript
+    , servant-server
+    , servant-subscriber
+    , streaming-commons
+    , tcql4
+    , text
+    , thunderbuns
+    , time
+    , tprocess
+    , transformers
+    , unliftio
+    , unordered-containers
+    , wai
+    , wai-app-static
+    , wai-middleware-prometheus
+    , warp
+  other-modules:
+      LibSpec
+      Thunderbuns.ValidateSpec
+      Paths_thunderbuns
+  default-language: Haskell2010

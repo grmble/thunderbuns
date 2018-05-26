@@ -4,7 +4,7 @@
 resolver: lts-11.7
 
 packages:
-- .
+- thunderbuns
 
 extra-deps: 
 # - dhall-1.11.0

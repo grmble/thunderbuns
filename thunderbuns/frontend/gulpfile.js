@@ -51,7 +51,7 @@ gulp.task("test", ["compile"], function() {
 
 gulp.task("copy", ["bundle"], function() {
     return gulp.src(distFiles)
-        .pipe(gulp.dest("../dist/static"));
+        .pipe(gulp.dest("../../dist/static"));
 });
 
 gulp.task("copy-appjs", ["bundle"], function() {
