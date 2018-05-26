@@ -1,6 +1,6 @@
 name:                tcql4
 version:             0.1.0.0
-github:              "grmble/tcql4"
+github:              "grmble/thunderbuns"
 license:             MIT
 author:              "Juergen Gmeiner"
 maintainer:          "spamless.juergen@gmail.com"
