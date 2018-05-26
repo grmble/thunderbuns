@@ -4,6 +4,8 @@
 resolver: lts-11.7
 
 packages:
+- picolens
+- tfreetime
 - thunderbuns
 
 extra-deps: 
