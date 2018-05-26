@@ -4,6 +4,7 @@
 resolver: lts-11.7
 
 packages:
+- hexdump-xxd
 - picolens
 - tfreetime
 - thunderbuns
@@ -15,5 +16,3 @@ extra-deps:
   commit: 06e76c2ab709d2f2326498b1d3cca6f830dc0a1c
 - git: https://github.com/grmble/tcql4.git
   commit: 32fc43f0ceae87ec2e295916b72c428ce4a8476e
-- git: https://github.com/grmble/hexdump-xxd.git
-  commit: 68a7f84e3466009934406534422441ee78527b47
