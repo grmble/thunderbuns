@@ -1,0 +1,7 @@
+(C) API/tests for List/Set/Map
+(C) Handle exception in message dispatcher - make connection invalid. STM should cancel waiters
+(C) Prevent insertion of null values
+(D) Batch statements
+(D) Named bind variables
+(D) Prepared statements
+(E) Authentication (at least plain text)

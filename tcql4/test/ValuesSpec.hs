@@ -1,0 +1,157 @@
+module ValuesSpec where
+
+import Control.Monad.Reader (liftIO)
+import Data.Conduit.Network
+import Data.Foldable (for_)
+import Data.Int
+import Data.Monoid ((<>))
+import qualified Data.Scientific as Scientific
+import Data.String (fromString)
+import qualified Data.Text as T
+import Data.Time.Calendar (fromGregorian)
+import Data.Time.Clock
+import Data.Traversable (for)
+import qualified Data.UUID as U
+import qualified Data.UUID.V4 as V4
+import Database.CQL4
+import System.Environment (lookupEnv)
+import Test.Hspec
+import UnliftIO.Exception (bracket)
+
+main :: IO ()
+main = hspec spec
+
+hostAndPort :: IO (Maybe (String, Int))
+hostAndPort = do
+  host <- lookupEnv "CASSANDRA_TEST_HOST"
+  port <- lookupEnv "CASSANDRA_TEST_PORT"
+  let p = maybe 9042 read port
+  case host of
+    Nothing -> pure Nothing
+    Just h -> pure $ Just (h, p)
+
+withDatabaseConnection :: (Connection -> IO ()) -> IO ()
+withDatabaseConnection f = do
+  hp <- hostAndPort
+  case hp of
+    Nothing ->
+      putStrLn "Test skipped, CASSANDRA_TEST_HOST/CASSANDRA_TEST_PORT not set"
+    Just (h, p) ->
+      runTCPClient (clientSettings p $ fromString h) $ \app ->
+        bracket
+          (connection' hexdumpLogger app)
+          (runConnection' closeConnection)
+          f
+
+createKSAndTables :: ConnectionIO ()
+createKSAndTables = do
+  let cql =
+        [ "create keyspace if not exists test " <>
+          "with replication = { 'class': 'SimpleStrategy', 'replication_factor': 1 } " <>
+          "and durable_writes = false"
+        , "use test"
+        , "create table if not exists test_text (pk uuid, value text, primary key (pk))"
+        , "create table if not exists test_varint (pk uuid, value varint, primary key (pk))"
+        , "create table if not exists test_bigint (pk uuid, value bigint, primary key (pk))"
+        , "create table if not exists test_int (pk uuid, value int, primary key (pk))"
+        , "create table if not exists test_smallint (pk uuid, value smallint, primary key (pk))"
+        , "create table if not exists test_tinyint (pk uuid, value tinyint, primary key (pk))"
+        , "create table if not exists test_decimal (pk uuid, value decimal, primary key (pk))"
+        , "create table if not exists test_boolean (pk uuid, value boolean, primary key (pk))"
+        , "create table if not exists test_date (pk uuid, value date, primary key (pk))"
+        , "create table if not exists test_timestamp (pk uuid, value timestamp, primary key (pk))"
+        , "create table if not exists test_time (pk uuid, value time, primary key (pk))"
+        , "create table if not exists test_inet (pk uuid, value inet, primary key (pk))"
+        , "create table if not exists test_counter (pk text, value counter, primary key (pk))"
+        , "create table if not exists test_list (pk uuid, value list<int>, primary key (pk))"
+        ]
+  for_ cql (\c -> execute One c [])
+
+useTest :: ConnectionIO ()
+useTest = execute One "use test" []
+
+writeValues :: HasToValue a => T.Text -> [a] -> ConnectionIO [(U.UUID, a)]
+writeValues tname as = do
+  let cql = "insert into " <> tname <> " (pk, value) values (?,?)"
+  for as $ \a -> do
+    uuid <- liftIO V4.nextRandom
+    execute One cql [toValue uuid, toValue a]
+    pure (uuid, a)
+
+readValue :: HasFromValue a => T.Text -> U.UUID -> ConnectionIO a
+readValue tname uu = do
+  let cql = "select value from " <> tname <> " where pk = ?"
+  rows <- executeQuery One cql [toValue uu]
+  extractSingleRow extract rows
+
+writeAndRead ::
+     (Eq a, Show a, HasFromValue a, HasToValue a)
+  => Connection
+  -> T.Text
+  -> [a]
+  -> IO ()
+writeAndRead conn tname vs = do
+  kvs <- runConnection' (useTest *> writeValues tname vs) conn
+  for_ kvs $ \(k, v) -> do
+    v' <- runConnection' (readValue tname k) conn
+    v' `shouldBe` v
+
+incrementCounter :: ConnectionIO Int64
+incrementCounter = do
+  let upd = "update test_counter set value=value+1 where pk=?"
+  let sel = "select value from test_counter where pk=?"
+  execute One upd [TextValue "counter"]
+  executeQuery One sel [TextValue "counter"] >>= extractSingleRow extract
+
+spec :: Spec
+spec =
+  around withDatabaseConnection $ do
+    describe "setup" $
+      it "create keyspace and tables" $ runConnection' createKSAndTables
+    describe "text" $ do
+      it "write/read text values" $ \conn ->
+        writeAndRead conn "test_text" (["", "x"] :: [T.Text])
+      it "write/read varint/integer values" $ \conn ->
+        writeAndRead conn "test_varint" ([0, 0xdeadbeef] :: [Integer])
+      it "write/read bigint/int64 values" $ \conn ->
+        writeAndRead conn "test_bigint" ([0, 0xdeadbeef] :: [Int64])
+      it "write/read int/int32 values" $ \conn ->
+        writeAndRead conn "test_int" ([0, 0x3ead1eef] :: [Int32])
+      it "write/read smallint/int16 values" $ \conn ->
+        writeAndRead conn "test_smallint" ([0, 0x1eef] :: [Int16])
+      it "write/read tinyint/integer values" $ \conn ->
+        writeAndRead conn "test_tinyint" ([0, 0x1e] :: [Int8])
+      it "write/read boolean/bool values" $ \conn ->
+        writeAndRead conn "test_boolean" [False, True]
+      it "write/read decimal/scientific values" $ \conn ->
+        writeAndRead
+          conn
+          "test_decimal"
+          ([0, 3.1415297] :: [Scientific.Scientific])
+      it "write/read date/day values" $ \conn ->
+        writeAndRead
+          conn
+          "test_date"
+          [fromGregorian 1970 1 1, fromGregorian 2018 3 10]
+      it "write/read timestamp/UTCTime values" $ \conn -> do
+        now <- getCurrentTime
+        let time = utctDayTime now
+        let now' =
+              now
+              { utctDayTime =
+                  secondsToDiffTime $ round (realToFrac time / 10e12 :: Double)
+              }
+        putStrLn ("NOW IS " ++ show now')
+        writeAndRead conn "test_timestamp" [now']
+      it "write/read time/DiffTime values" $ \conn ->
+        writeAndRead conn "test_time" ([0, 3600] :: [DiffTime])
+      it "write/read inet/IPAddress values" $ \conn ->
+        writeAndRead conn "test_inet" [IPAddressV4 0x7f000001]
+      it "can incrememt counter" $ \conn -> do
+        c1 <- runConnection' (useTest *> incrementCounter) conn
+        c2 <- runConnection' incrementCounter conn
+        c2 `shouldBe` (c1 + 1)
+      {--
+      it "write/read list values" $ \conn ->
+        writeAndRead conn "test_list" [ListValue $ V.fromList [IntValue 1, IntValue 2, IntValue 3]]
+      --}

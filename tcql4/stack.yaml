@@ -1,0 +1,8 @@
+resolver: lts-10.8
+
+packages:
+- .
+
+extra-deps:
+- git: https://github.com/grmble/hexdump-xxd.git
+  commit: 68a7f84e3466009934406534422441ee78527b47
