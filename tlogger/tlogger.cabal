@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 174da1ebed20c93c7770b039636bd0f074822a4c2519728a5671aabba3aa1adc
+-- hash: c6b198528b5108badc7a45b3664ff819ace091ea0a25c294c49216fb8013adb9
 
 name:           tlogger
 version:        0.1.0.0
@@ -38,7 +38,6 @@ library
     , picolens
     , scientific
     , text
-    , tfreetime
     , time
     , tprocess
     , unliftio
@@ -67,12 +66,12 @@ test-suite tlogger-test
     , picolens
     , scientific
     , text
-    , tfreetime
     , time
     , tlogger
     , tprocess
     , unliftio
     , unordered-containers
   other-modules:
+      LoggingSpec
       Paths_tlogger
   default-language: Haskell2010

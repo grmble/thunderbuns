@@ -1,62 +1,44 @@
 {-# LANGUAGE TemplateHaskell #-}
-{- | Thunderbuns Logging
 
-Logging for haskell, bunyan style.
-
-https://github.com/trentm/node-bunyan
-
-The output format is compatible with bunyan (command line tool!)
-
-
--}
+{- | Thunderbuns Logging -}
 module Thunderbuns.Logging
   ( HasLogger(..)
   , Priority(..)
   , Logger
-  , LoggerIO
   , LogRecord
-  , PureLogRecord
   , rootLogger
+  , mkLogger
   , logger
-  , loggerIO
   , loggerNamesL
   , priorityMapL
   , logRecord
-  , logRecord'
-  , pureLogRecord
-  , logM
-  , logIO
-  , errorM
-  , errorIO
-  , warnM
-  , warnIO
-  , infoM
-  , infoIO
-  , debugM
-  , debugIO
+  , logDebug
+  , logInfo
+  , logWarn
+  , logError
   , duration
   , consoleHandler
   ) where
 
-import Control.Lens.PicoLens (Lens', view)
+import Control.Lens.PicoLens (Lens', over, view)
 import Control.Monad (unless, when)
 import Control.Monad.Reader
 import qualified Data.Aeson as A
-import qualified Data.Aeson.Types as AT
 import qualified Data.Aeson.TH as ATH
+import qualified Data.Aeson.Types as AT
 import qualified Data.ByteString.Lazy.Char8 as LBSC8
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
 import qualified Data.Time.Clock.System as SC
+import GHC.Generics
 import Network.BSD (getHostName)
 import System.IO (hFlush, stdout)
 import Text.Printf (printf)
 import Text.Show.Functions ()
 import Thunderbuns.Process (getPid)
 import UnliftIO.STM
-import GHC.Generics
 
 data Priority
   = FATAL
@@ -110,17 +92,10 @@ instance HasLogger Logger where
   loggerL = id
 
 loggerNamesL :: Lens' Logger (TVar (S.HashSet T.Text))
-loggerNamesL k lg = fmap (\x -> lg { loggerNames = x }) (k (loggerNames lg))
+loggerNamesL k lg = fmap (\x -> lg {loggerNames = x}) (k (loggerNames lg))
 
 priorityMapL :: Lens' Logger (TVar (M.HashMap T.Text Priority))
-priorityMapL k lg = fmap (\x -> lg { priorityMap = x }) (k (priorityMap lg))
-
--- | LoggerIO is ReaderT HasLogger in the IO monad
---
--- Actually it's MonadIO so could be ExceptT x IO
-type LoggerIO h m a
-   = (MonadIO m, HasLogger h) =>
-       ReaderT h m a
+priorityMapL k lg = fmap (\x -> lg {priorityMap = x}) (k (priorityMap lg))
 
 -- | Console handler function - prints to console
 consoleHandler :: LogRecord -> IO ()
@@ -134,10 +109,11 @@ consoleHandler (LogRecord obj) = do
 -- | It contains the handling function, all
 -- | other loggers should be children of the root
 -- | logger.
-rootLogger :: T.Text -> Priority -> (LogRecord -> IO ()) -> IO Logger
+rootLogger ::
+     MonadIO m => T.Text -> Priority -> (LogRecord -> IO ()) -> m Logger
 rootLogger n p h = do
-  hn <- getHostName
-  pid <- getPid
+  hn <- liftIO getHostName
+  pid <- liftIO getPid
   priMap <- newTVarIO M.empty
   logSet <- newTVarIO S.empty
   return
@@ -162,20 +138,29 @@ rootLogger n p h = do
 -- loglevel of the given name.  The decision to log or not
 -- is simply an integer comparison - so try to have long lived
 -- child loggers.
-logger :: (MonadIO m) => T.Text -> AT.Object -> Logger -> m Logger
-logger n ctx lg = do
+mkLogger ::
+     (HasLogger r, MonadIO m, MonadReader r m)
+  => T.Text
+  -> AT.Object
+  -> m Logger
+mkLogger n ctx = do
+  lg <- asks (view loggerL)
   m <- readTVarIO (priorityMap lg)
   s <- readTVarIO (loggerNames lg)
   unless (S.member n s) $ atomically $ modifyTVar (loggerNames lg) (S.insert n)
   let pri = maybe (priority lg) intPriority $ M.lookup n m
   pure lg {name = n, context = M.union ctx (context lg), priority = pri}
 
--- | Create a child logger in LoggerIO
-loggerIO :: T.Text -> AT.Object -> LoggerIO h m Logger
-loggerIO n ctx = do
-  h <- ask
-  let lg = view loggerL h
-  liftIO $ logger n ctx lg
+-- | Locally use a child logger with the given name and context
+logger ::
+     (HasLogger r, MonadIO m, MonadReader r m)
+  => T.Text
+  -> AT.Object
+  -> m a
+  -> m a
+logger n ctx action = do
+  lg <- mkLogger n ctx
+  local (over loggerL (const lg)) action
 
 -- | A pure log record does not contain time yet
 --
@@ -187,40 +172,42 @@ newtype PureLogRecord =
   PureLogRecord AT.Object
   deriving (Show, Eq)
 
-pureLogRecord :: Priority -> AT.Object -> T.Text -> Logger -> PureLogRecord
-pureLogRecord pri obj msg lg = PureLogRecord $ decorate (context lg)
-  where
-    decorate =
-      M.insert "name" (A.String $ name lg) .
-      M.insert "level" (A.Number $ fromIntegral $ intPriority pri) .
-      M.insert "msg" (A.String msg) . M.union obj
-
 -- | A log record also has a time and everything from the root context.
 newtype LogRecord =
   LogRecord AT.Object
   deriving (Show, Eq)
 
-logRecord :: MonadIO m => PureLogRecord -> Logger -> m LogRecord
-logRecord obj lg = do
-  t <- liftIO SC.getSystemTime
-  logRecord' t obj lg
-
-logRecord' ::
-     MonadIO m => SC.SystemTime -> PureLogRecord -> Logger -> m LogRecord
-logRecord' tm (PureLogRecord obj) lg =
-  pure $ LogRecord $ decorate tm (context lg)
+-- | Log a generic log record.
+--
+-- It takes a priority, context object and message.
+logRecord ::
+     (HasLogger r, MonadReader r m, MonadIO m)
+  => Priority
+  -> AT.Object
+  -> T.Text
+  -> m ()
+logRecord pri obj msg = do
+  lg <- asks (view loggerL)
+  let pri' = intPriority pri
+  when (pri' >= priority lg) $ do
+    tm <- liftIO SC.getSystemTime
+    liftIO $ handler lg (LogRecord (decorate lg tm (context lg)))
   where
-    decorate t =
+    decorate lg t =
+      M.insert "name" (A.String $ name lg) .
+      M.insert "level" (A.Number $ fromIntegral $ intPriority pri) .
+      M.insert "msg" (A.String msg) .
       M.union obj .
       M.insert "time" (A.toJSON $ SC.systemToUTCTime t) .
       M.union (rootContext lg)
 
-logM :: MonadIO m => Priority -> AT.Object -> T.Text -> Logger -> m ()
-logM pri obj msg lg = do
-  let pri' = intPriority pri
-  when (pri' >= priority lg) $
-    logRecord (pureLogRecord pri obj msg lg) lg >>= liftIO . handler lg
-
+-- | Helper to compute a duration.
+--
+-- This will compute a suitable context object and message
+-- which can be logged using
+--
+--    x <- getSystemTime >>= duration
+--    logRecord DEBUG (curry x)
 duration :: MonadIO m => SC.SystemTime -> m (AT.Object, T.Text)
 duration start = do
   end <- liftIO SC.getSystemTime
@@ -234,31 +221,14 @@ duration start = do
       fromIntegral (SC.systemSeconds sc) +
       fromIntegral (SC.systemNanoseconds sc) / 1e9
 
-infoM :: T.Text -> Logger -> IO ()
-infoM = logM INFO M.empty
+logInfo :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
+logInfo = logRecord INFO M.empty
 
-debugM :: T.Text -> Logger -> IO ()
-debugM = logM DEBUG M.empty
+logDebug :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
+logDebug = logRecord DEBUG M.empty
 
-errorM :: T.Text -> Logger -> IO ()
-errorM = logM ERROR M.empty
+logError :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
+logError = logRecord ERROR M.empty
 
-warnM :: T.Text -> Logger -> IO ()
-warnM = logM WARN M.empty
-
-logIO :: Priority -> AT.Object -> T.Text -> LoggerIO h m ()
-logIO pri obj msg = do
-  h <- ask
-  liftIO $ logM pri obj msg (view loggerL h)
-
-infoIO :: T.Text -> LoggerIO h m ()
-infoIO = logIO INFO M.empty
-
-debugIO :: T.Text -> LoggerIO h m ()
-debugIO = logIO INFO M.empty
-
-errorIO :: T.Text -> LoggerIO h m ()
-errorIO = logIO INFO M.empty
-
-warnIO :: T.Text -> LoggerIO h m ()
-warnIO = logIO INFO M.empty
+logWarn :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
+logWarn = logRecord WARN M.empty

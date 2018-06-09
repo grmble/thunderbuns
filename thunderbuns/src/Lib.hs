@@ -8,6 +8,7 @@ module Lib
   , app
   ) where
 
+import Control.Monad.Reader
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Monoid ((<>))
@@ -29,7 +30,7 @@ type API = "users" :> Get '[ JSON] [User]
 
 startApp :: Int -> Logger -> IO ()
 startApp port lg = do
-  debugM ("Starting to serve on port " <> T.pack (show port)) lg
+  runReaderT (logDebug $ "Starting to serve on port " <> T.pack (show port)) lg
   run port app
 
 app :: Application

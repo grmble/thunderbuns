@@ -29,8 +29,6 @@ dependencies:
 - picolens
 - scientific
 - text
-- tfreetime
-# XXX remove me
 - time
 - tprocess
 - unliftio

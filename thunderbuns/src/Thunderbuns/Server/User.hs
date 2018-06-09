@@ -72,13 +72,13 @@ servantErr err msg = err {errBody = BL.fromStrict $ TE.encodeUtf8 msg}
 authenticationFailed :: HasLogger e => T.Text -> ReaderT e Handler a
 authenticationFailed logMsg = do
   let msg = "Authentication failed - wrong username or password"
-  errorIO (msg <> ": " <> logMsg)
+  logError (msg <> ": " <> logMsg)
   throwError $ servantErr err403 msg
 
 authorizationDenied :: HasLogger e => T.Text -> ReaderT e Handler a
 authorizationDenied logMsg = do
   let msg = "Authorization denied - token invalid or expired"
-  errorIO (msg <> ": " <> logMsg)
+  logError (msg <> ": " <> logMsg)
   throwError $ servantErr err403 msg
 
 -- | Generate a random secret suitable for jwt tokens
@@ -102,7 +102,7 @@ newJwtToken u t = do
   claims <- newClaims u t
   case hmacEncode HS512 s (BL.toStrict $ A.encode claims) of
     Left jwtErr -> do
-      errorIO $ T.pack $ show jwtErr
+      logError $ T.pack $ show jwtErr
       throwError $ err500 {errBody = "Error encdoding JWT"}
     Right tk -> pure $ Token (TE.decodeUtf8 $ unJwt tk)
 
@@ -132,7 +132,7 @@ decodeToken ::
 decodeToken tk = do
   t <- liftIO getPOSIXTime
   s <- decodeJwtSecret
-  debugIO ("decodeToken: s=" <> TE.decodeUtf8 s)
+  logDebug ("decodeToken: s=" <> TE.decodeUtf8 s)
   case decodeToken' tk t s of
     Left err -> authorizationDenied err
     Right c -> pure c
@@ -179,12 +179,12 @@ jwtAuthHandler' req = do
     note'
       (authorizationDenied "can not find authorization header")
       (L.lookup hAuthorization (requestHeaders req))
-  debugIO ("Authorization header: " <> TE.decodeUtf8 auth)
+  logDebug ("Authorization header: " <> TE.decodeUtf8 auth)
   tk <-
     case Atto.parseOnly bearer auth of
       Left err -> authorizationDenied $ T.pack err
       Right x -> pure x
-  debugIO ("JWT from header: " <> TE.decodeUtf8 tk)
+  logDebug ("JWT from header: " <> TE.decodeUtf8 tk)
   decodeToken tk
   where
     bearer :: Atto.Parser B.ByteString

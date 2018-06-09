@@ -65,7 +65,7 @@ startApp
   _ <- liftIO $ register ghcMetrics
   e <- ask
   let p = view (server . port) e
-  infoIO ("Starting to serve on port " <> T.pack (show p))
+  logInfo ("Starting to serve on port " <> T.pack (show p))
   liftIO $ run (fromInteger p) (app e)
   where
     app e
@@ -86,7 +86,7 @@ startApp
                  (M.singleton
                     "url"
                     (AT.String $ TE.decodeUtf8 $ rawPathInfo req)))
-      lg <- logger "thunderbuns.server" ctx (view loggerL e)
+      lg <- runReaderT (mkLogger "thunderbuns.server" ctx) (view loggerL e)
       let e' = over loggerL (const lg) e
       appE e' req $ \res -> do
         responded <- respond res
@@ -98,7 +98,7 @@ startApp
                 (AT.Object $
                  M.singleton "status" $ AT.Number $ fromIntegral $ statusCode st)
                 obj
-        logM INFO obj' msg lg
+        runReaderT (logRecord INFO obj' msg) lg
         pure responded
 
 toHandler :: e -> ReaderT e Handler a -> Handler a
