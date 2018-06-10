@@ -2,6 +2,7 @@ module LoggingSpec where
 
 import Control.Lens.PicoLens
 import Control.Monad.Reader
+import Control.Monad.Free
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (isJust)
 import qualified Data.Time.Clock.System as SC
@@ -41,9 +42,16 @@ spec = do
       runReaderT standardLogAction rl
       records <- readIORef var
       length records `shouldBe` 3
+  describe "check free implementation" $
+    it "works like the io version" $ do
+      var <- newIORef []
+      rl <- rootLogger "root" INFO (handler var)
+      runReaderT (foldFree interpretIO standardFreeAction) rl
+      records <- readIORef var
+      length records `shouldBe` 2
   describe "check duration helper" $
     it "should compute suitable headers" $ do
-      (ctx, msg) <- SC.getSystemTime >>= duration
+      (ctx, msg) <- duration <$> SC.getSystemTime <*> SC.getSystemTime
       show msg `shouldContain` "completed in"
       ctx `shouldSatisfy` (isJust . M.lookup "duration")
   where
@@ -52,7 +60,15 @@ spec = do
 standardLogAction :: HasLogger r => ReaderT r IO ()
 standardLogAction = do
   logInfo "info@root"
-  logDebug "debug@child"
-  logger "child" (M.singleton "x" "17") $ do
+  logDebug "debug@root"
+  localLogger "child" (M.singleton "x" "17") $ do
     logInfo "info@child"
     logDebug "debug@child"
+
+standardFreeAction :: Free LoggingF ()
+standardFreeAction = do
+  logInfo "info@free root"
+  logDebug "debug@free root"
+  localLogger "child" (M.singleton "x" "17") $ do
+    logInfo "info@free child"
+    logDebug "debug@free child"

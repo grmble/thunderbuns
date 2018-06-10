@@ -43,7 +43,6 @@ type FreeClock = Free FreeClockF
 runFreeClockIO :: FreeClock a -> IO a
 runFreeClockIO = foldFree go
   where
-    go :: FreeClockF a -> IO a
     go (GetCurrentTime f) = f <$> C.getCurrentTime
     go (GetSystemTime f) = f <$> C.getSystemTime
     go (GetPOSIXTime f) = f <$> C.getPOSIXTime

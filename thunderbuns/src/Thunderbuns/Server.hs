@@ -86,12 +86,13 @@ startApp
                  (M.singleton
                     "url"
                     (AT.String $ TE.decodeUtf8 $ rawPathInfo req)))
-      lg <- runReaderT (mkLogger "thunderbuns.server" ctx) (view loggerL e)
+      lg <- runReaderT (childLogger "thunderbuns.server" ctx) (view loggerL e)
       let e' = over loggerL (const lg) e
       appE e' req $ \res -> do
         responded <- respond res
         let st = responseStatus res
-        (obj, msg) <- duration start
+        end <- SC.getSystemTime
+        let (obj, msg) = duration start end
         let obj' =
               M.insert
                 "res"

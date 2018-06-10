@@ -24,6 +24,7 @@ dependencies:
 - base >= 4.10 && < 5
 - aeson
 - bytestring
+- free
 - mtl
 - network
 - picolens

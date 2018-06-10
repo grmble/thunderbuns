@@ -1,32 +1,44 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-{- | Thunderbuns Logging -}
+{- | Thunderbuns Logging
+
+A structured logging package like node's bunyan.
+The output is compatible with bunyan.
+
+-}
 module Thunderbuns.Logging
   ( HasLogger(..)
+  , MonadTLogger(..)
+  , LoggingF(..)
   , Priority(..)
   , Logger
   , LogRecord
   , rootLogger
-  , mkLogger
-  , logger
+  , childLogger
   , loggerNamesL
   , priorityMapL
-  , logRecord
   , logDebug
   , logInfo
   , logWarn
   , logError
+  , logTrace
+  , logDuration
   , duration
   , consoleHandler
+  , noopHandler
+  , interpretIO
+  , interpretNoop
   ) where
 
 import Control.Lens.PicoLens (Lens', over, view)
 import Control.Monad (unless, when)
+import Control.Monad.Free
 import Control.Monad.Reader
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
 import qualified Data.Aeson.Types as AT
 import qualified Data.ByteString.Lazy.Char8 as LBSC8
+import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import qualified Data.Scientific as Scientific
@@ -40,6 +52,7 @@ import Text.Show.Functions ()
 import Thunderbuns.Process (getPid)
 import UnliftIO.STM
 
+-- | Symbolic priorities
 data Priority
   = FATAL
   | ERROR
@@ -51,6 +64,9 @@ data Priority
 
 $(ATH.deriveJSON A.defaultOptions ''Priority)
 
+-- | Int values for the possible priorities
+--
+-- These are the same as the bunyan values
 intPriority :: Priority -> Int
 intPriority FATAL = 60
 intPriority ERROR = 50
@@ -59,18 +75,43 @@ intPriority INFO = 30
 intPriority DEBUG = 20
 intPriority TRACE = 10
 
+-- | TLogger type class
+--
+-- Thanks to the IO instance, IO code can simply log.
+-- A free instance is also provided.
+--
+-- Note that the root logger has to be created from IO.
+class Monad m => MonadTLogger m where
+  localLogger :: T.Text -> AT.Object -> m a -> m a
+  -- ^ Locally use a child logger with the given name and context
+  -- | Log a generic log record.
+  --
+  -- It takes a priority, context object and message.
+  logRecord :: Priority -> AT.Object -> T.Text -> m ()
+  -- | Get the current time.
+  --
+  -- This simply wraps getSystemTime and is needed for the duration helpers
+  getLoggingTime :: m SC.SystemTime
+
+-- | A Logger has a name, priority and context.
+--
+-- The context is a default JSON object -
+-- everything in here will be in every log message
+-- unless overwritten by the log record's context.
+--
+-- Everything else is shared between all loggers.
 data Logger = Logger
   { name :: {-# UNPACK #-}!T.Text
     -- ^ logger name
   , context :: !AT.Object
     -- ^ current context object - can be overwritten
+  , priority :: {-# UNPACK #-}!Int
+    -- ^ log level of the logger
   , handler :: !(LogRecord -> IO ())
     -- ^ handler for log records
   , rootContext :: !AT.Object
     -- ^ root context - coKntains everything that can be determined
     -- when the root logger is created.  Cant be overwritten.
-  , priority :: {-# UNPACK #-}!Int
-    -- ^ log level of the logger
   , priorityMap :: {-# UNPACK #-}!(TVar (M.HashMap T.Text Priority))
     -- ^ map of logger names to priority
   , loggerNames :: {-# UNPACK #-}!(TVar (S.HashSet T.Text))
@@ -102,6 +143,10 @@ consoleHandler :: LogRecord -> IO ()
 consoleHandler (LogRecord obj) = do
   LBSC8.putStrLn $ A.encode obj
   hFlush stdout
+
+-- | Handler that does not log anything
+noopHandler :: LogRecord -> IO ()
+noopHandler _ = pure ()
 
 -- | Create a root logger object.
 -- |
@@ -138,97 +183,121 @@ rootLogger n p h = do
 -- loglevel of the given name.  The decision to log or not
 -- is simply an integer comparison - so try to have long lived
 -- child loggers.
-mkLogger ::
-     (HasLogger r, MonadIO m, MonadReader r m)
-  => T.Text
-  -> AT.Object
-  -> m Logger
-mkLogger n ctx = do
+childLogger :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> AT.Object -> m Logger
+childLogger n ctx = do
   lg <- asks (view loggerL)
   m <- readTVarIO (priorityMap lg)
   s <- readTVarIO (loggerNames lg)
-  unless (S.member n s) $ atomically $ modifyTVar (loggerNames lg) (S.insert n)
+  unless (S.member n s) $
+    atomically $ modifyTVar (loggerNames lg) (S.insert n)
   let pri = maybe (priority lg) intPriority $ M.lookup n m
   pure lg {name = n, context = M.union ctx (context lg), priority = pri}
 
--- | Locally use a child logger with the given name and context
-logger ::
-     (HasLogger r, MonadIO m, MonadReader r m)
-  => T.Text
-  -> AT.Object
-  -> m a
-  -> m a
-logger n ctx action = do
-  lg <- mkLogger n ctx
-  local (over loggerL (const lg)) action
-
--- | A pure log record does not contain time yet
+-- | A log record.
 --
--- It's also still missing the root context.
---
--- It will have anything from the parent logger
--- plus `msg` and `level` (= priority)
-newtype PureLogRecord =
-  PureLogRecord AT.Object
-  deriving (Show, Eq)
-
--- | A log record also has a time and everything from the root context.
+-- It has everything from it's loggers context
+-- and root context, also the time will be filled in.
+-- And of course, it has the message and priority
+-- of it's creation.
 newtype LogRecord =
   LogRecord AT.Object
   deriving (Show, Eq)
 
--- | Log a generic log record.
---
--- It takes a priority, context object and message.
-logRecord ::
-     (HasLogger r, MonadReader r m, MonadIO m)
-  => Priority
-  -> AT.Object
-  -> T.Text
-  -> m ()
-logRecord pri obj msg = do
-  lg <- asks (view loggerL)
-  let pri' = intPriority pri
-  when (pri' >= priority lg) $ do
-    tm <- liftIO SC.getSystemTime
-    liftIO $ handler lg (LogRecord (decorate lg tm (context lg)))
-  where
-    decorate lg t =
-      M.insert "name" (A.String $ name lg) .
-      M.insert "level" (A.Number $ fromIntegral $ intPriority pri) .
-      M.insert "msg" (A.String msg) .
-      M.union obj .
-      M.insert "time" (A.toJSON $ SC.systemToUTCTime t) .
-      M.union (rootContext lg)
+-- | Log a message at level INFO - see logRecord for full API
+logInfo :: MonadTLogger m => T.Text -> m ()
+logInfo = logRecord INFO M.empty
+
+-- | Log a message at level DEBUG - see logRecord for full API
+logDebug :: MonadTLogger m => T.Text -> m ()
+logDebug = logRecord DEBUG M.empty
+
+-- | Log a message at level ERROR - see logRecord for full API
+logError :: MonadTLogger m => T.Text -> m ()
+logError = logRecord ERROR M.empty
+
+-- | Log a message at level WARN - see logRecord for full API
+logWarn :: MonadTLogger m => T.Text -> m ()
+logWarn = logRecord WARN M.empty
+
+-- | Log a message at level TRACE - see logRecord for full API
+logTrace :: MonadTLogger m => T.Text -> m ()
+logTrace = logRecord TRACE M.empty
 
 -- | Helper to compute a duration.
 --
 -- This will compute a suitable context object and message
 -- which can be logged using
 --
---    x <- getSystemTime >>= duration
---    logRecord DEBUG (curry x)
-duration :: MonadIO m => SC.SystemTime -> m (AT.Object, T.Text)
-duration start = do
-  end <- liftIO SC.getSystemTime
+--    uncurry
+--      (logRecord DEBUG) \
+--      (duration <$> getLoggingTime <*> getLoggingTime)
+duration :: SC.SystemTime -> SC.SystemTime -> (AT.Object, T.Text)
+duration start end = do
   let dur = double end - double start
   let ctx = M.singleton "duration" (AT.Number $ Scientific.fromFloatDigits dur)
   let msg = T.pack $ printf "completed in %dms" ((round $ 1000 * dur) :: Int)
-  pure (ctx, msg)
+  (ctx, msg)
   where
     double :: SC.SystemTime -> Double
     double sc =
       fromIntegral (SC.systemSeconds sc) +
       fromIntegral (SC.systemNanoseconds sc) / 1e9
 
-logInfo :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
-logInfo = logRecord INFO M.empty
+-- | Log the duration of the action.
+logDuration :: MonadTLogger m => m a -> m a
+logDuration action = do
+  start <- getLoggingTime
+  a <- action
+  end <- getLoggingTime
+  uncurry (logRecord INFO) (duration start end)
+  pure a
 
-logDebug :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
-logDebug = logRecord DEBUG M.empty
+-- | IO Instance
+instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
+  localLogger n ctx action = do
+    lg <- childLogger n ctx
+    local (over loggerL (const lg)) action
+  logRecord pri obj msg = do
+    lg <- asks (view loggerL)
+    let pri' = intPriority pri
+    when (pri' >= priority lg) $ do
+      tm <- liftIO SC.getSystemTime
+      liftIO $ handler lg (LogRecord (decorate lg tm (context lg)))
+    where
+      decorate lg t =
+        M.insert "name" (A.String $ name lg) .
+        M.insert "level" (A.Number $ fromIntegral $ intPriority pri) .
+        M.insert "msg" (A.String msg) .
+        M.union obj .
+        M.insert "time" (A.toJSON $ SC.systemToUTCTime t) .
+        M.union (rootContext lg)
+  getLoggingTime = liftIO SC.getSystemTime
 
-logError :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
-logError = logRecord ERROR M.empty
+data LoggingF x
+  = LocalLoggerF T.Text
+              AT.Object
+              (Free LoggingF x)
+  | LogRecordF Priority
+               AT.Object
+               T.Text
+               x
+  | GetLoggingTimeF (SC.SystemTime -> x)
+  deriving (Functor)
 
-logWarn :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> m ()
-logWarn = logRecord WARN M.empty
+instance MonadTLogger (Free LoggingF) where
+  localLogger n ctx action = liftF $ LocalLoggerF n ctx action
+  logRecord pri ctx msg = liftF $ LogRecordF pri ctx msg ()
+  getLoggingTime = liftF $ GetLoggingTimeF id
+
+interpretIO ::
+     (HasLogger r, MonadReader r m, MonadTLogger m, MonadIO m)
+  => LoggingF a
+  -> m a
+interpretIO (LocalLoggerF n ctx action) = localLogger n ctx (foldFree interpretIO action)
+interpretIO (LogRecordF pri ctx msg x) = logRecord pri ctx msg $> x
+interpretIO (GetLoggingTimeF f) = f <$> liftIO SC.getSystemTime
+
+interpretNoop :: (HasLogger r, MonadReader r m) => LoggingF a -> m a
+interpretNoop (LocalLoggerF _ _ action) = foldFree interpretNoop action
+interpretNoop (LogRecordF _ _ _ x) = pure x
+interpretNoop (GetLoggingTimeF f) = f <$> pure (SC.MkSystemTime 0 0)

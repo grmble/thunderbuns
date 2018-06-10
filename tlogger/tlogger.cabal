@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c6b198528b5108badc7a45b3664ff819ace091ea0a25c294c49216fb8013adb9
+-- hash: 01f511eb512a73acf36b1d8f053a76f33a054bfe70ad6a0160000fd323d9b6bc
 
 name:           tlogger
 version:        0.1.0.0
@@ -33,6 +33,7 @@ library
       aeson
     , base >=4.10 && <5
     , bytestring
+    , free
     , mtl
     , network
     , picolens
@@ -60,6 +61,7 @@ test-suite tlogger-test
     , aeson
     , base >=4.10 && <5
     , bytestring
+    , free
     , hspec
     , mtl
     , network
