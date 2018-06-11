@@ -2,18 +2,19 @@ module Thunderbuns.CmdLine where
 
 import Control.Lens (view)
 import Control.Monad.Except (runExceptT)
+import Control.Monad.Free
 import Control.Monad.Reader
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Servant.Server
 import Thunderbuns.Config
+import Thunderbuns.DB.Auth
 import Thunderbuns.DB.Init
 import Thunderbuns.DB.Internal
-import Thunderbuns.DB.User
 import Thunderbuns.GenPS
 import Thunderbuns.Logging
 import Thunderbuns.Server
-import Thunderbuns.Server.User
+import Thunderbuns.Server.Auth
 import Thunderbuns.Validate
 import UnliftIO.Concurrent (forkIO)
 import UnliftIO.Exception (throwIO)
@@ -70,11 +71,13 @@ parseCommandLine =
       argument str (metavar "PASSWORD")
     addUserParser = do
       up <- nameAndPass
-      pure $ validateM up >>= addUser
+      pure $
+        validateM up >>=
+        foldFree Thunderbuns.DB.Auth.interpretIO . Thunderbuns.DB.Auth.addUser
     authUserParser = do
       up <- nameAndPass
       pure $
-        validateM up >>= Thunderbuns.Server.User.authenticate >>= liftIO . print
+        validateM up >>= Thunderbuns.Server.Auth.authenticate >>= liftIO . print
     dbParser =
       hsubparser
         (command

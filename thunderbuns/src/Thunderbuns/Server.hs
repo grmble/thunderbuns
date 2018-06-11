@@ -25,7 +25,7 @@ import Thunderbuns.Config
 import Thunderbuns.Config.Server (HasServerConfig, port, staticRoot)
 import Thunderbuns.Logging
 import Thunderbuns.Server.Debug
-import Thunderbuns.Server.User
+import Thunderbuns.Server.Auth
 
 authServer :: Env -> Server UserAPI
 authServer e  = hoistServer userAPI (toHandler e) userServerT

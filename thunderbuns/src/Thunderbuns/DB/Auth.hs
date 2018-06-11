@@ -1,9 +1,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Thunderbuns.DB.User where
+module Thunderbuns.DB.Auth where
 
 import Control.Lens (view)
 import Control.Monad.Except
+import Control.Monad.Free
 import Control.Monad.Reader
 import Crypto.Error (throwCryptoErrorIO)
 import Crypto.KDF.Argon2
@@ -18,7 +19,6 @@ import Database.CQL4
 import GHC.Generics
 import Thunderbuns.Config
 import Thunderbuns.Config.DB
-import Thunderbuns.Config.Jwt (HasJwtConfig(..))
 import Thunderbuns.Validate
 
 data UserPass = UserPass
@@ -33,14 +33,43 @@ instance DefaultValidator UserPass where
     UserPass <$> defaultValidator (appmsg msg "user") u <*>
     defaultValidator (appmsg msg "pass") p
 
-addUser ::
-     (HasDbConnection e, HasDbConfig e, HasJwtConfig e, MonadIO m)
-  => V UserPass
-  -> ReaderT e m ()
-addUser up = do
+-- | Auth DB Primitives
+class Monad m =>
+      MonadAuthDB m
+  where
+  addUser :: V UserPass -> m ()
+  -- ^ Add a user.  Does not do anything if the user already exists
+  authenticate :: V UserPass -> m Bool
+  -- ^ Authenticate a user.
+
+data AuthDBF x
+  = AddUserF (V UserPass)
+             x
+  | AuthenticateF (V UserPass)
+                  (Bool -> x)
+  deriving (Show, Functor)
+
+instance MonadAuthDB (Free AuthDBF) where
+  addUser up = liftF $ AddUserF up ()
+  authenticate up = liftF $ AuthenticateF up id
+
+interpretIO ::
+     ( HasDbConnection r
+     , HasDbConfig r
+     , MonadReader r m
+     , MonadIO m
+     )
+  => AuthDBF a
+  -> m a
+interpretIO (AddUserF up x) = do
   opts <- asks (view (dbConfig . passwdOptions))
   dbc <- ask >>= dbConnection
   liftIO $ runConnection' (addUser' opts up) dbc
+  pure x
+interpretIO (AuthenticateF up f) = do
+  dbc <- ask >>= dbConnection
+  f <$> liftIO (runConnection' (authenticate' up) dbc)
+
 
 addUser' :: PasswdOptions -> V UserPass -> ConnectionIO ()
 addUser' o up = do
@@ -50,7 +79,7 @@ addUser' o up = do
   h <- liftIO (throwCryptoErrorIO $ hash (argonOpts o) p s 16)
   execute
     One
-    "insert into tb_users.passwd (username, config, salt, hash) values (?, ?, ?, ?)"
+    "insert into tb_users.passwd (username, config, salt, hash) values (?, ?, ?, ?) if not exists"
     [ TextValue (user (unV up))
     , BlobValue (BL.toStrict $ encode o)
     , BlobValue s
@@ -61,13 +90,6 @@ argonOpts :: PasswdOptions -> Options
 argonOpts (Argon2Options i m p) =
   Options (fromIntegral i) (fromIntegral m) (fromIntegral p) Argon2id Version13
 
-authenticate ::
-     (HasDbConnection e, HasJwtConfig e, MonadIO m)
-  => V UserPass
-  -> ReaderT e m Bool
-authenticate up = do
-  dbc <- ask >>= dbConnection
-  liftIO $ runConnection' (authenticate' up) dbc
 
 authenticate' :: V UserPass -> ConnectionIO Bool
 authenticate' up = do

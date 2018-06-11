@@ -81,7 +81,9 @@ intPriority TRACE = 10
 -- A free instance is also provided.
 --
 -- Note that the root logger has to be created from IO.
-class Monad m => MonadTLogger m where
+class Monad m =>
+      MonadTLogger m
+  where
   localLogger :: T.Text -> AT.Object -> m a -> m a
   -- ^ Locally use a child logger with the given name and context
   -- | Log a generic log record.
@@ -163,19 +165,19 @@ rootLogger n p h = do
   logSet <- newTVarIO S.empty
   return
     Logger
-    { name = n
-    , context = M.empty
-    , handler = h
-    , rootContext =
-        M.fromList
-          [ ("v", A.Number 0)
-          , ("hostname", A.String (T.pack hn))
-          , ("pid", A.Number $ fromIntegral pid)
-          ]
-    , priority = intPriority p
-    , priorityMap = priMap
-    , loggerNames = logSet
-    }
+      { name = n
+      , context = M.empty
+      , handler = h
+      , rootContext =
+          M.fromList
+            [ ("v", A.Number 0)
+            , ("hostname", A.String (T.pack hn))
+            , ("pid", A.Number $ fromIntegral pid)
+            ]
+      , priority = intPriority p
+      , priorityMap = priMap
+      , loggerNames = logSet
+      }
 
 -- | Create a child logger with the given name and default properties
 --
@@ -183,13 +185,16 @@ rootLogger n p h = do
 -- loglevel of the given name.  The decision to log or not
 -- is simply an integer comparison - so try to have long lived
 -- child loggers.
-childLogger :: (HasLogger r, MonadReader r m, MonadIO m) => T.Text -> AT.Object -> m Logger
+childLogger ::
+     (HasLogger r, MonadReader r m, MonadIO m)
+  => T.Text
+  -> AT.Object
+  -> m Logger
 childLogger n ctx = do
   lg <- asks (view loggerL)
   m <- readTVarIO (priorityMap lg)
   s <- readTVarIO (loggerNames lg)
-  unless (S.member n s) $
-    atomically $ modifyTVar (loggerNames lg) (S.insert n)
+  unless (S.member n s) $ atomically $ modifyTVar (loggerNames lg) (S.insert n)
   let pri = maybe (priority lg) intPriority $ M.lookup n m
   pure lg {name = n, context = M.union ctx (context lg), priority = pri}
 
@@ -275,8 +280,8 @@ instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
 
 data LoggingF x
   = LocalLoggerF T.Text
-              AT.Object
-              (Free LoggingF x)
+                 AT.Object
+                 (Free LoggingF x)
   | LogRecordF Priority
                AT.Object
                T.Text
@@ -293,7 +298,8 @@ interpretIO ::
      (HasLogger r, MonadReader r m, MonadTLogger m, MonadIO m)
   => LoggingF a
   -> m a
-interpretIO (LocalLoggerF n ctx action) = localLogger n ctx (foldFree interpretIO action)
+interpretIO (LocalLoggerF n ctx action) =
+  localLogger n ctx (foldFree interpretIO action)
 interpretIO (LogRecordF pri ctx msg x) = logRecord pri ctx msg $> x
 interpretIO (GetLoggingTimeF f) = f <$> liftIO SC.getSystemTime
 

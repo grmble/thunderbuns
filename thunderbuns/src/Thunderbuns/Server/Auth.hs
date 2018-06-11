@@ -3,11 +3,12 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Thunderbuns.Server.User where
+module Thunderbuns.Server.Auth where
 
 import Control.Lens (view)
 import Control.Monad.Except
 import Control.Monad.Reader
+import Control.Monad.Free
 import Crypto.Random (getRandomBytes)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
@@ -30,7 +31,8 @@ import Servant
 import Servant.Server.Experimental.Auth
 import Thunderbuns.Config
 import Thunderbuns.Config.Jwt
-import qualified Thunderbuns.DB.User as DBU
+import Thunderbuns.Config.DB
+import qualified Thunderbuns.DB.Auth as DBA
 import Thunderbuns.Logging
 import Thunderbuns.Validate
 
@@ -44,26 +46,26 @@ type Username = T.Text
 
 type UserAPI
   -- authorize
-   = ReqBody '[ JSON] DBU.UserPass :> Post '[ JSON] Token
+   = ReqBody '[ JSON] DBA.UserPass :> Post '[ JSON] Token
 
 userAPI :: Proxy UserAPI
 userAPI = Proxy
 
 userServerT ::
-     (HasLogger e, HasDbConnection e, HasJwtConfig e)
-  => ServerT UserAPI (ReaderT e Handler)
+     (HasLogger r, HasDbConfig r, HasDbConnection r, HasJwtConfig r)
+  => ServerT UserAPI (ReaderT r Handler)
 userServerT = authenticateUser
   where
     authenticateUser up = validateM up >>= authenticate
 
 authenticate ::
-     (HasLogger e, HasDbConnection e, HasJwtConfig e)
-  => V DBU.UserPass
-  -> ReaderT e Handler Token
+     (HasLogger r, HasDbConfig r, HasDbConnection r, HasJwtConfig r)
+  => V DBA.UserPass
+  -> ReaderT r Handler Token
 authenticate up = do
-  isAuth <- DBU.authenticate up
+  isAuth <- foldFree DBA.interpretIO (DBA.authenticate up)
   if isAuth
-    then liftIO getPOSIXTime >>= newJwtToken (DBU.user (unV up))
+    then liftIO getPOSIXTime >>= newJwtToken (DBA.user (unV up))
     else authenticationFailed "password did not match stored hash"
 
 servantErr :: ServantErr -> T.Text -> ServantErr

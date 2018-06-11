@@ -9,10 +9,10 @@ import Language.PureScript.Bridge
 import Servant.API
 import Servant.Foreign
 import Servant.PureScript
-import Thunderbuns.DB.User
+import Thunderbuns.DB.Auth
 import Thunderbuns.Logging
 import Thunderbuns.Server
-import Thunderbuns.Server.User
+import Thunderbuns.Server.Auth
 
 myTypes :: [SumType 'Haskell]
 myTypes =
@@ -73,7 +73,7 @@ instance ( KnownSymbol sym
     where
       arg =
         Arg
-        { _argName = PathSegment "Authorization"
-        , _argType = typeFor lang (Proxy :: Proxy ftype) (Proxy :: Proxy Text)
-        }
+          { _argName = PathSegment "Authorization"
+          , _argType = typeFor lang (Proxy :: Proxy ftype) (Proxy :: Proxy Text)
+          }
       subP = Proxy :: Proxy sublayout
