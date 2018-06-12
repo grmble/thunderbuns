@@ -2,7 +2,7 @@ module Thunderbuns.CmdLine where
 
 import Control.Lens (view)
 import Control.Monad.Except (runExceptT)
-import Control.Monad.Free
+import Control.Monad.Free.Church
 import Control.Monad.Reader
 import Data.Semigroup ((<>))
 import Options.Applicative
@@ -73,7 +73,7 @@ parseCommandLine =
       up <- nameAndPass
       pure $
         validateM up >>=
-        foldFree Thunderbuns.DB.Auth.interpretIO . Thunderbuns.DB.Auth.addUser
+        foldF authDbIO . Thunderbuns.DB.Auth.addUser
     authUserParser = do
       up <- nameAndPass
       pure $

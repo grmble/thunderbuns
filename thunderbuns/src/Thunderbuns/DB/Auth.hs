@@ -4,7 +4,7 @@ module Thunderbuns.DB.Auth where
 
 import Control.Lens (view)
 import Control.Monad.Except
-import Control.Monad.Free
+import Control.Monad.Free.Church
 import Control.Monad.Reader
 import Crypto.Error (throwCryptoErrorIO)
 import Crypto.KDF.Argon2
@@ -35,38 +35,38 @@ instance DefaultValidator UserPass where
 
 -- | Auth DB Primitives
 class Monad m =>
-      MonadAuthDB m
+      MonadAuthDb m
   where
   addUser :: V UserPass -> m ()
   -- ^ Add a user.  Does not do anything if the user already exists
   authenticate :: V UserPass -> m Bool
   -- ^ Authenticate a user.
 
-data AuthDBF x
+data AuthDbF x
   = AddUserF (V UserPass)
              x
   | AuthenticateF (V UserPass)
                   (Bool -> x)
   deriving (Show, Functor)
 
-instance MonadAuthDB (Free AuthDBF) where
+instance MonadAuthDb (F AuthDbF) where
   addUser up = liftF $ AddUserF up ()
   authenticate up = liftF $ AuthenticateF up id
 
-interpretIO ::
+authDbIO ::
      ( HasDbConnection r
      , HasDbConfig r
      , MonadReader r m
      , MonadIO m
      )
-  => AuthDBF a
+  => AuthDbF a
   -> m a
-interpretIO (AddUserF up x) = do
+authDbIO (AddUserF up x) = do
   opts <- asks (view (dbConfig . passwdOptions))
   dbc <- ask >>= dbConnection
   liftIO $ runConnection' (addUser' opts up) dbc
   pure x
-interpretIO (AuthenticateF up f) = do
+authDbIO (AuthenticateF up f) = do
   dbc <- ask >>= dbConnection
   f <$> liftIO (runConnection' (authenticate' up) dbc)
 

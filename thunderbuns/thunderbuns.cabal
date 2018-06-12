@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 90267b3052beedc1eee9f89df60d70b75429ea7baa336d740483e36cbc7e5d52
+-- hash: b5b95f463b8265be26f31412939da15d47c220e2cc8517f1de6e40f2f943e0cd
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -67,7 +67,6 @@ library
     , wai-middleware-prometheus
     , warp
   exposed-modules:
-      Blubb
       Lib
       Thunderbuns.CmdLine
       Thunderbuns.Config

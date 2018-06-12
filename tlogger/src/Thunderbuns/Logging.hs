@@ -26,13 +26,13 @@ module Thunderbuns.Logging
   , duration
   , consoleHandler
   , noopHandler
-  , interpretIO
-  , interpretNoop
+  , loggingIO
+  , loggingNoop
   ) where
 
 import Control.Lens.PicoLens (Lens', over, view)
 import Control.Monad (unless, when)
-import Control.Monad.Free
+import Control.Monad.Free.Church
 import Control.Monad.Reader
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
@@ -281,7 +281,7 @@ instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
 data LoggingF x
   = LocalLoggerF T.Text
                  AT.Object
-                 (Free LoggingF x)
+                 (F LoggingF x)
   | LogRecordF Priority
                AT.Object
                T.Text
@@ -289,21 +289,21 @@ data LoggingF x
   | GetLoggingTimeF (SC.SystemTime -> x)
   deriving (Functor)
 
-instance MonadTLogger (Free LoggingF) where
+instance MonadTLogger (F LoggingF) where
   localLogger n ctx action = liftF $ LocalLoggerF n ctx action
   logRecord pri ctx msg = liftF $ LogRecordF pri ctx msg ()
   getLoggingTime = liftF $ GetLoggingTimeF id
 
-interpretIO ::
+loggingIO ::
      (HasLogger r, MonadReader r m, MonadTLogger m, MonadIO m)
   => LoggingF a
   -> m a
-interpretIO (LocalLoggerF n ctx action) =
-  localLogger n ctx (foldFree interpretIO action)
-interpretIO (LogRecordF pri ctx msg x) = logRecord pri ctx msg $> x
-interpretIO (GetLoggingTimeF f) = f <$> liftIO SC.getSystemTime
+loggingIO (LocalLoggerF n ctx action) =
+  localLogger n ctx (foldF loggingIO action)
+loggingIO (LogRecordF pri ctx msg x) = logRecord pri ctx msg $> x
+loggingIO (GetLoggingTimeF f) = f <$> liftIO SC.getSystemTime
 
-interpretNoop :: (HasLogger r, MonadReader r m) => LoggingF a -> m a
-interpretNoop (LocalLoggerF _ _ action) = foldFree interpretNoop action
-interpretNoop (LogRecordF _ _ _ x) = pure x
-interpretNoop (GetLoggingTimeF f) = f <$> pure (SC.MkSystemTime 0 0)
+loggingNoop :: (HasLogger r, MonadReader r m) => LoggingF a -> m a
+loggingNoop (LocalLoggerF _ _ action) = foldF loggingNoop action
+loggingNoop (LogRecordF _ _ _ x) = pure x
+loggingNoop (GetLoggingTimeF f) = f <$> pure (SC.MkSystemTime 0 0)

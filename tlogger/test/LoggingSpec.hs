@@ -2,7 +2,7 @@ module LoggingSpec where
 
 import Control.Lens.PicoLens
 import Control.Monad.Reader
-import Control.Monad.Free
+import Control.Monad.Free.Church
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (isJust)
 import qualified Data.Time.Clock.System as SC
@@ -46,7 +46,7 @@ spec = do
     it "works like the io version" $ do
       var <- newIORef []
       rl <- rootLogger "root" INFO (handler var)
-      runReaderT (foldFree interpretIO standardFreeAction) rl
+      runReaderT (foldF loggingIO standardFreeAction) rl
       records <- readIORef var
       length records `shouldBe` 2
   describe "check duration helper" $
@@ -65,7 +65,7 @@ standardLogAction = do
     logInfo "info@child"
     logDebug "debug@child"
 
-standardFreeAction :: Free LoggingF ()
+standardFreeAction :: F LoggingF ()
 standardFreeAction = do
   logInfo "info@free root"
   logDebug "debug@free root"

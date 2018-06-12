@@ -8,7 +8,7 @@ module Thunderbuns.Server.Auth where
 import Control.Lens (view)
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.Free
+import Control.Monad.Free.Church
 import Crypto.Random (getRandomBytes)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
@@ -63,7 +63,7 @@ authenticate ::
   => V DBA.UserPass
   -> ReaderT r Handler Token
 authenticate up = do
-  isAuth <- foldFree DBA.interpretIO (DBA.authenticate up)
+  isAuth <- foldF DBA.authDbIO (DBA.authenticate up)
   if isAuth
     then liftIO getPOSIXTime >>= newJwtToken (DBA.user (unV up))
     else authenticationFailed "password did not match stored hash"
