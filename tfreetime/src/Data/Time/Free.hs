@@ -5,17 +5,16 @@ module Data.Time.Free
   , module Data.Time.Clock.System
   , module Data.Time.Clock.POSIX
   , FreeClockF(..)
-  , FreeClock
   , HasSystemTime(..)
   , getCurrentTime
   , getSystemTime
   , getPOSIXTime
-  , runFreeClockIO
-  , runFreeClock
+  , freeClockIO
+  , freeClockPure
   ) where
 
 import Control.Lens.PicoLens
-import Control.Monad.Free
+import Control.Monad.Free.Church
 import Control.Monad.Free.TH
 import Control.Monad.Reader
 import Data.Time.Clock hiding (getCurrentTime)
@@ -35,17 +34,13 @@ data FreeClockF x
 
 $(makeFree ''FreeClockF)
 
-type FreeClock = Free FreeClockF
-
 -- | Interpret the free clock in the IO Monad
 -- |
 -- | Runs the IO actions from Data.Time.Clock
-runFreeClockIO :: FreeClock a -> IO a
-runFreeClockIO = foldFree go
-  where
-    go (GetCurrentTime f) = f <$> C.getCurrentTime
-    go (GetSystemTime f) = f <$> C.getSystemTime
-    go (GetPOSIXTime f) = f <$> C.getPOSIXTime
+freeClockIO :: MonadIO m => FreeClockF a -> m a
+freeClockIO (GetCurrentTime f) = f <$> liftIO C.getCurrentTime
+freeClockIO (GetSystemTime f) = f <$> liftIO C.getSystemTime
+freeClockIO (GetPOSIXTime f) = f <$> liftIO C.getPOSIXTime
 
 -- | Reader env for pure freeclocks.
 -- |
@@ -56,9 +51,9 @@ class HasSystemTime a where
 instance HasSystemTime SystemTime where
   currentTime = id
 
--- | Run the freeclock from a Reader
-runFreeClock :: (HasSystemTime r, MonadReader r m) => FreeClock a -> m a
-runFreeClock = foldFree go
+-- | Interpret the freeclock from a Reader
+freeClockPure :: (HasSystemTime r, MonadReader r m) => FreeClockF a -> m a
+freeClockPure = go
   where
     askTime f = asks (f . view currentTime)
     go (GetCurrentTime f) = askTime (f . systemToUTCTime)

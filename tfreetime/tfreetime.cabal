@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cefa804ff36518e294885c131a2707e96574a4ed3081c9b06d62ea256b6f9221
+-- hash: 2f5c34330e439a66c3ccfbbd5a58c365d91a4d9bc5460e5ee59e4164bf4b7398
 
 name:           tfreetime
 version:        0.1.0.0
@@ -36,6 +36,7 @@ library
     , picolens
     , time
   exposed-modules:
+      Control.Monad.Free.Combinators
       Data.Time.Free
   other-modules:
       Paths_tfreetime

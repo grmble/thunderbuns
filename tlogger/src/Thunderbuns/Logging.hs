@@ -12,7 +12,7 @@ module Thunderbuns.Logging
   , LoggingF(..)
   , Priority(..)
   , Logger
-  , LogRecord
+  , LogRecord(..)
   , rootLogger
   , childLogger
   , loggerNamesL
@@ -28,11 +28,14 @@ module Thunderbuns.Logging
   , noopHandler
   , loggingIO
   , loggingNoop
+  , treeLoggingIO
+  , treeLoggingNoop
   ) where
 
 import Control.Lens.PicoLens (Lens', over, view)
 import Control.Monad (unless, when)
 import Control.Monad.Free.Church
+import Control.Monad.Free.Combinators
 import Control.Monad.Reader
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
@@ -278,32 +281,45 @@ instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
         M.union (rootContext lg)
   getLoggingTime = liftIO SC.getSystemTime
 
+-- | Functor for Free instance
 data LoggingF x
-  = LocalLoggerF T.Text
-                 AT.Object
-                 (F LoggingF x)
-  | LogRecordF Priority
+  = LogRecordF Priority
                AT.Object
                T.Text
                x
   | GetLoggingTimeF (SC.SystemTime -> x)
   deriving (Functor)
 
-instance MonadTLogger (F LoggingF) where
-  localLogger n ctx action = liftF $ LocalLoggerF n ctx action
-  logRecord pri ctx msg = liftF $ LogRecordF pri ctx msg ()
-  getLoggingTime = liftF $ GetLoggingTimeF id
+-- | Free MonadTLogger instance
+instance MonadTLogger (F (TreeF (T.Text, AT.Object) LoggingF)) where
+  localLogger n ctx action = liftF $ TreeF (n, ctx) action
+  logRecord pri ctx msg = liftF $ LeafF $ LogRecordF pri ctx msg ()
+  getLoggingTime = liftF $ LeafF $ GetLoggingTimeF id
+
+-- | Interpret the Free instance to IO
+treeLoggingIO ::
+     (HasLogger r, MonadReader r m, MonadTLogger m, MonadIO m)
+  => TreeF (T.Text, AT.Object) LoggingF a
+  -> m a
+treeLoggingIO (TreeF (n, ctx) logf) =
+  localLogger n ctx (foldF treeLoggingIO logf)
+treeLoggingIO (LeafF f) = loggingIO f
+
+-- | Pure interpreter for Free instance
+treeLoggingNoop ::
+     (HasLogger r, MonadReader r m)
+  => TreeF (T.Text, AT.Object) LoggingF a
+  -> m a
+treeLoggingNoop (TreeF _ logf) = foldF treeLoggingNoop logf
+treeLoggingNoop (LeafF f) = loggingNoop f
 
 loggingIO ::
-     (HasLogger r, MonadReader r m, MonadTLogger m, MonadIO m)
+     ( MonadTLogger m, MonadIO m)
   => LoggingF a
   -> m a
-loggingIO (LocalLoggerF n ctx action) =
-  localLogger n ctx (foldF loggingIO action)
 loggingIO (LogRecordF pri ctx msg x) = logRecord pri ctx msg $> x
 loggingIO (GetLoggingTimeF f) = f <$> liftIO SC.getSystemTime
 
-loggingNoop :: (HasLogger r, MonadReader r m) => LoggingF a -> m a
-loggingNoop (LocalLoggerF _ _ action) = foldF loggingNoop action
+loggingNoop :: (MonadReader r m) => LoggingF a -> m a
 loggingNoop (LogRecordF _ _ _ x) = pure x
 loggingNoop (GetLoggingTimeF f) = f <$> pure (SC.MkSystemTime 0 0)

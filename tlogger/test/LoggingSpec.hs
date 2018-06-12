@@ -1,10 +1,13 @@
 module LoggingSpec where
 
 import Control.Lens.PicoLens
-import Control.Monad.Reader
 import Control.Monad.Free.Church
+import Control.Monad.Free.Combinators
+import Control.Monad.Reader
+import qualified Data.Aeson.Types as AT
 import qualified Data.HashMap.Strict as M
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
+import qualified Data.Text as T
 import qualified Data.Time.Clock.System as SC
 import Test.Hspec
 import Thunderbuns.Logging
@@ -46,9 +49,11 @@ spec = do
     it "works like the io version" $ do
       var <- newIORef []
       rl <- rootLogger "root" INFO (handler var)
-      runReaderT (foldF loggingIO standardFreeAction) rl
+      runReaderT (foldF treeLoggingIO standardFreeAction) rl
       records <- readIORef var
       length records `shouldBe` 2
+      head records `shouldSatisfy` (\(LogRecord x) -> M.lookup "x" x == Just "17")
+      head (tail records) `shouldSatisfy` (\(LogRecord x) -> isNothing $ M.lookup "x" x)
   describe "check duration helper" $
     it "should compute suitable headers" $ do
       (ctx, msg) <- duration <$> SC.getSystemTime <*> SC.getSystemTime
@@ -65,7 +70,7 @@ standardLogAction = do
     logInfo "info@child"
     logDebug "debug@child"
 
-standardFreeAction :: F LoggingF ()
+standardFreeAction :: F (TreeF (T.Text, AT.Object) LoggingF) ()
 standardFreeAction = do
   logInfo "info@free root"
   logDebug "debug@free root"

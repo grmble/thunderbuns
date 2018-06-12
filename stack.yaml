@@ -1,7 +1,6 @@
-# need nightly for dhall 1.11 (2018-03-10), but it's not in f*cking 2018-03-12
-# need more recent nightly for servant 1.13 - streaming support (2018-03-12)
-# lts-11.5 should workd (2018-04-21)
-resolver: lts-11.7
+# lts-11.13 (ghc 8.2.2) has dhall 1.11.1
+# nightly-2018-6-12 (ghc 8.4.3) has dhall 1.14, but big upgrade
+resolver: lts-11.13
 
 packages:
 - hexdump-xxd

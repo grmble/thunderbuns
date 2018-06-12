@@ -1,6 +1,7 @@
 module FreeTimeSpec where
 
 import Control.Lens.PicoLens
+import Control.Monad.Free.Church
 import Data.Int
 import Data.Time.Free
 import Data.Word
@@ -25,23 +26,23 @@ spec :: Spec
 spec = do
   describe "freeclock io" $
     it "io actions can be run" $ do
-      _ <- runFreeClockIO getCurrentTime
-      _ <- runFreeClockIO getSystemTime
-      _ <- runFreeClockIO getPOSIXTime
+      _ <- foldF freeClockIO getCurrentTime
+      _ <- foldF freeClockIO getSystemTime
+      _ <- foldF freeClockIO getPOSIXTime
       (1 :: Int) + 1 `shouldBe` 2
   describe "freeclock pure" $ do
     it "systemtime can be set" $
       property $ \(s :: Int64, n :: Word32) -> do
         let sys = MkSystemTime s n
-        let sys' = runFreeClock getSystemTime sys
+        let sys' = foldF freeClockPure getSystemTime sys
         sys' `shouldBe` sys
     it "posixtime is correctly converted" $
       property $ \(s :: Int64, n :: Word32) -> do
         let sys = MkSystemTime s n
-        let pos = runFreeClock getPOSIXTime sys
+        let pos = foldF freeClockPure getPOSIXTime sys
         pos `shouldBe` systemToPOSIXTime sys
     it "utctime is correctly converted" $
       property $ \(s :: Int64, n :: Word32) -> do
         let sys = MkSystemTime s n
-        let pos = runFreeClock getCurrentTime sys
+        let pos = foldF freeClockPure getCurrentTime sys
         pos `shouldBe` systemToUTCTime sys
