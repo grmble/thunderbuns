@@ -1,4 +1,4 @@
-module Thunderbuns.Auth.DB where
+module Thunderbuns.Auth where
 
 import Control.Lens (view)
 import Control.Monad.Except
@@ -10,6 +10,7 @@ import qualified Data.Aeson as A
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as BL
+import Data.Bifunctor (first)
 import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -17,11 +18,11 @@ import Database.CQL4
 import Jose.Jwa (JwsAlg(..))
 import Jose.Jws (hmacDecode, hmacEncode)
 import Jose.Jwt
-import Servant
 import Thunderbuns.Auth.Types
 import Thunderbuns.Config
 import Thunderbuns.Config.DB
 import Thunderbuns.Config.Jwt
+import Thunderbuns.Exception
 import Thunderbuns.Logging
 import Thunderbuns.Validate
 
@@ -37,7 +38,12 @@ class Monad m =>
   getRandomBytes :: Int -> m B.ByteString
 
 addUser ::
-     (HasDbConfig r, MonadReader r m, MonadTLogger m, MonadError ServantErr m, MonadAuthDb m)
+     ( HasDbConfig r
+     , MonadReader r m
+     , MonadTLogger m
+     , MonadError ThunderbunsException m
+     , MonadAuthDb m
+     )
   => V UserPass
   -> m ()
 addUser up = do
@@ -46,14 +52,14 @@ addUser up = do
   -- 16 bytes or 128 bits are sufficient salt/hash lengths according to docs
   s <- getRandomBytes 16
   case eitherCryptoError $ hash (argonOpts o) p s 16 of
-    Left err -> internalError (T.pack $ show err)
+    Left err -> throwError $ internalError (show err)
     Right h -> upsertPasswd (user (unV up)) o s h
 
 authenticate ::
      ( HasJwtConfig r
      , MonadAuthDb m
      , MonadReader r m
-     , MonadError ServantErr m
+     , MonadError ThunderbunsException m
      , MonadTLogger m
      )
   => V UserPass
@@ -62,10 +68,11 @@ authenticate up = do
   let p = TE.encodeUtf8 (pass (unV up))
   (o, s, h) <- selectPasswd (user (unV up))
   case eitherCryptoError $ hash (argonOpts o) p s 16 of
-    Left err -> internalError (T.pack (show err))
-    Right h' -> if h == h'
-      then getPOSIXTime >>= newJwtToken (user (unV up))
-      else authenticationFailed "different hash with given password"
+    Left err -> throwError $ internalError (show err)
+    Right h' ->
+      if h == h'
+        then getPOSIXTime >>= newJwtToken (user (unV up))
+        else logError "password did not match stored hash" *> throwError authenticationFailed
 
 argonOpts :: PasswdOptions -> Options
 argonOpts (Argon2Options i m p) =
@@ -75,7 +82,11 @@ argonOpts (Argon2Options i m p) =
 --
 -- It will expirate at current time + configured lifetime
 newJwtToken ::
-     (HasJwtConfig r, MonadReader r m, MonadError ServantErr m, MonadTLogger m)
+     ( HasJwtConfig r
+     , MonadReader r m
+     , MonadError ThunderbunsException m
+     , MonadTLogger m
+     )
   => Username
   -> POSIXTime
   -> m Token
@@ -85,25 +96,29 @@ newJwtToken u t = do
   case hmacEncode HS512 s (BL.toStrict $ A.encode claims) of
     Left jwtErr -> do
       logError $ T.pack $ show jwtErr
-      throwError $ servantErr err500 "hmacEncode.error"
+      throwError $ internalError ("hmacEncode.error: " ++ show jwtErr)
     Right tk -> pure $ Token (TE.decodeUtf8 $ unJwt tk)
 
 decodeJwtSecret ::
-     (HasJwtConfig r, MonadReader r m, MonadTLogger m, MonadError ServantErr m)
+     ( HasJwtConfig r
+     , MonadReader r m
+     , MonadTLogger m
+     , MonadError ThunderbunsException m
+     )
   => m B.ByteString
 decodeJwtSecret = do
   t16 <- asks (view (jwtConfig . secret))
   let (s, err) = B16.decode $ TE.encodeUtf8 t16
   if err == ""
     then pure s
-    else authorizationDenied (TE.decodeUtf8 err)
+    else throwError $ internalError (show err)
 
 decodeToken' ::
      B.ByteString -> POSIXTime -> B.ByteString -> Either T.Text JwtClaims
 decodeToken' tk t s = do
-  (_, bs) <- lmap (T.pack . show) $ hmacDecode s tk
-  c <- lmap (T.pack . show) $ A.eitherDecodeStrict' bs
-  et <- note "no expiration in token" (jwtExp c)
+  (_, bs) <- first (T.pack . show) $ hmacDecode s tk
+  c <- first (T.pack . show) $ A.eitherDecodeStrict' bs
+  et <- maybeError "no expiration in token" (jwtExp c)
   if et < IntDate t
     then Left "token expired"
     else Right c
@@ -112,7 +127,7 @@ decodeToken ::
      ( HasJwtConfig r
      , MonadReader r m
      , MonadTLogger m
-     , MonadError ServantErr m
+     , MonadError ThunderbunsException m
      )
   => B.ByteString
   -> m JwtClaims
@@ -120,9 +135,12 @@ decodeToken tk = do
   t <- getPOSIXTime
   s <- decodeJwtSecret
   logDebug ("decodeToken: s=" <> TE.decodeUtf8 s)
-  case decodeToken' tk t s of
-    Left err -> authorizationDenied err
-    Right c -> pure c
+  (_, bs) <- liftEither $ first (\e -> internalError ("hmacDecode: " ++ show e)) $ hmacDecode s tk
+  c <- liftEither $ first (\e -> internalError ("json decode: " ++ e)) $ A.eitherDecodeStrict' bs
+  et <- maybeError (internalError "no expiration in token") (jwtExp c)
+  if et < IntDate t
+    then logError "token expired" *> throwError authorizationDenied
+    else pure c
 
 emptyClaims :: JwtClaims
 emptyClaims = JwtClaims Nothing Nothing Nothing Nothing Nothing Nothing Nothing
@@ -134,54 +152,8 @@ newClaims u t = do
   let ex = t + realToFrac dt
   pure $ emptyClaims {jwtSub = Just u, jwtExp = Just (IntDate ex)}
 
--- XXX types ?
-servantErr :: ServantErr -> T.Text -> ServantErr
-servantErr err msg = err {errBody = BL.fromStrict $ TE.encodeUtf8 msg}
-
--- XXX types ?
-authenticationFailed ::
-     (MonadTLogger m, MonadError ServantErr m) => T.Text -> m a
-authenticationFailed logMsg = do
-  let msg = "Authentication failed - wrong username or password"
-  logError (msg <> ": " <> logMsg)
-  throwError $ servantErr err403 msg
-
--- XXX types ?
-authorizationDenied ::
-     (MonadTLogger m, MonadError ServantErr m) => T.Text -> m a
-authorizationDenied logMsg = do
-  let msg = "Authorization denied - token invalid or expired"
-  logError (msg <> ": " <> logMsg)
-  throwError $ servantErr err403 msg
-
--- XXX types ?
-internalError ::
-  (MonadTLogger m, MonadError ServantErr m) => T.Text -> m a
-internalError logMsg = do
-  let msg = "Internal error"
-  logError (msg <> ": " <> logMsg)
-  throwError $ servantErr err500 msg
-
--- XXX : bifunctor
--- XXX : util module
-lmap :: (a -> b) -> Either a c -> Either b c
-lmap f (Left e) = Left $ f e
-lmap _ (Right r) = Right r
-
--- XXX : util module
-note :: MonadError e m => e -> Maybe a -> m a
-note e Nothing = throwError e
-note _ (Just a) = pure a
-
--- XXX: util module
-note' :: MonadError e m => m a -> Maybe a -> m a
-note' e Nothing = e
-note' _ (Just a) = pure a
-
-
-instance HasDbConnection r => MonadAuthDb (ReaderT r Handler) where
-  upsertPasswd n o s h =
-    ask >>= dbConnection >>= liftIO . runConnection' go
+instance HasDbConnection r => MonadAuthDb (ReaderT r (ExceptT ThunderbunsException IO)) where
+  upsertPasswd n o s h = ask >>= dbConnection >>= liftIO . runConnection' go
     where
       go =
         execute
@@ -192,8 +164,7 @@ instance HasDbConnection r => MonadAuthDb (ReaderT r Handler) where
           , BlobValue s
           , BlobValue h
           ]
-  selectPasswd n =
-    ask >>= dbConnection >>= liftIO . runConnection' go
+  selectPasswd n = ask >>= dbConnection >>= liftIO . runConnection' go
     where
       go = do
         let cql =

@@ -1,3 +1,9 @@
-logging - handle more strings types
-auth/db -> auth
-auth - auth error type, translate to servant error in server.auth
+(A) supervise connection +cql4
+(B) typesafe form result +forms +frontend
+(C) debug mode; collect and replay messages +bonsai
+(C) logging - handle more strings types
+auth header reader ??? maybe done? +backend
+caek dependency ???+bonsai
+generate show instances ??? +backend
+no readers for msg, case expressions ??? +frontend
+no updaters ??? +frontend

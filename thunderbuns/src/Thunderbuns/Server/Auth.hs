@@ -18,13 +18,12 @@ import Network.HTTP.Types (hAuthorization)
 import Network.Wai (Request, requestHeaders)
 import Servant
 import Servant.Server.Experimental.Auth
-import Thunderbuns.Auth.DB
+import Thunderbuns.Auth
 import Thunderbuns.Auth.Types
 import Thunderbuns.Config
-import Thunderbuns.Config.DB
 import Thunderbuns.Config.Jwt
 import Thunderbuns.Logging
-import Thunderbuns.Server.Types ()
+import Thunderbuns.Server.Types
 import Thunderbuns.Validate
 
 type UserAPI
@@ -35,11 +34,11 @@ userAPI :: Proxy UserAPI
 userAPI = Proxy
 
 userServerT ::
-     (HasLogger r, HasDbConfig r, HasDbConnection r, HasJwtConfig r)
+     (HasLogger r, HasDbConnection r, HasJwtConfig r)
   => ServerT UserAPI (ReaderT r Handler)
 userServerT = authenticateUser
   where
-    authenticateUser up = validateM up >>= authenticate
+    authenticateUser up = mapError (validateM up >>= authenticate)
 
 -- | Generate a random secret suitable for jwt tokens
 --
@@ -59,8 +58,9 @@ jwtAuthHandler' ::
      (HasJwtConfig e, HasLogger e) => Request -> ReaderT e Handler JwtClaims
 jwtAuthHandler' req = do
   auth <-
-    note'
+    maybe
       (authorizationDenied "can not find authorization header")
+      pure
       (L.lookup hAuthorization (requestHeaders req))
   logDebug ("Authorization header: " <> TE.decodeUtf8 auth)
   tk <-
@@ -68,7 +68,7 @@ jwtAuthHandler' req = do
       Left err -> authorizationDenied $ T.pack err
       Right x -> pure x
   logDebug ("JWT from header: " <> TE.decodeUtf8 tk)
-  decodeToken tk
+  mapError $ decodeToken tk
   where
     bearer :: Atto.Parser B.ByteString
     bearer = do

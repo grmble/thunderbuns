@@ -6,7 +6,7 @@ import Control.Monad.Reader
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Servant.Server
-import Thunderbuns.Auth.DB
+import Thunderbuns.Auth
 import Thunderbuns.Auth.Types
 import Thunderbuns.Config
 import Thunderbuns.DB.Init
@@ -15,7 +15,7 @@ import Thunderbuns.GenPS
 import Thunderbuns.Logging
 import Thunderbuns.Server
 import Thunderbuns.Server.Auth
-import Thunderbuns.Server.Types ()
+import Thunderbuns.Server.Types
 import Thunderbuns.Validate
 import UnliftIO.Concurrent (forkIO)
 import UnliftIO.Exception (throwIO)
@@ -74,11 +74,11 @@ parseCommandLine =
       argument str (metavar "PASSWORD")
     addUserParser = do
       up <- nameAndPass
-      pure $ validateM up >>= Thunderbuns.Auth.DB.addUser
+      pure $ mapError (validateM up >>= Thunderbuns.Auth.addUser)
     authUserParser = do
       up <- nameAndPass
       pure $
-        validateM up >>= Thunderbuns.Auth.DB.authenticate >>= liftIO . print
+        mapError (validateM up >>= Thunderbuns.Auth.authenticate >>= liftIO . print)
     dbParser =
       hsubparser
         (command

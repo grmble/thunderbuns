@@ -12,7 +12,6 @@ import Servant.PureScript
 import Thunderbuns.Auth.Types
 import Thunderbuns.Logging
 import Thunderbuns.Server
-import Thunderbuns.Server.Auth
 
 myTypes :: [SumType 'Haskell]
 myTypes =
@@ -30,8 +29,8 @@ generatePurescript = do
 -- | Move the types from Thunderbuns.Logging to Thunderbuns.WebAPI.Types
 fixTypesModule :: BridgePart
 fixTypesModule = do
-  typeModule ^== "Thunderbuns.Logging" <|> typeModule ^== "Thunderbuns.DB.User" <|>
-    typeModule ^== "Thunderbuns.Server.User"
+  typeModule ^== "Thunderbuns.Logging" <|> typeModule ^== "Thunderbuns.Auth.Types" <|>
+    typeModule ^== "Thunderbuns.Server.Auth"
   t <- view haskType
   TypeInfo (_typePackage t) "Thunderbuns.WebAPI.Types" (_typeName t) <$>
     psTypeParameters

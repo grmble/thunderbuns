@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f4fb181d55842b4a4a5b8967fd0423a08f9c17d3df4b69bc55a776e5508fc995
+-- hash: 07ecc873569ffb1b6870d5f14531fad1ec0bf7a9936bb1cc47205da917a62e4e
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -35,6 +35,7 @@ library
     , base >=4.10 && <5
     , base16-bytestring
     , base64-bytestring
+    , bifunctors
     , bytestring
     , cryptonite
     , dhall
@@ -68,7 +69,7 @@ library
     , warp
   exposed-modules:
       Lib
-      Thunderbuns.Auth.DB
+      Thunderbuns.Auth
       Thunderbuns.Auth.Types
       Thunderbuns.CmdLine
       Thunderbuns.Config
@@ -100,6 +101,7 @@ executable thunderbuns-exe
     , base >=4.10 && <5
     , base16-bytestring
     , base64-bytestring
+    , bifunctors
     , bytestring
     , cryptonite
     , dhall
@@ -150,6 +152,7 @@ test-suite thunderbuns-test
     , base >=4.10 && <5
     , base16-bytestring
     , base64-bytestring
+    , bifunctors
     , bytestring
     , cryptonite
     , dhall

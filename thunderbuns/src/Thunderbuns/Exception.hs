@@ -3,10 +3,13 @@
 module Thunderbuns.Exception
   ( ThunderbunsException(..)
   , validationException
-  , authenticationDenied
-  )
-where
+  , authenticationFailed
+  , authorizationDenied
+  , internalError
+  , maybeError
+  ) where
 
+import Control.Monad.Except (MonadError(..))
 import qualified Data.List as L
 import Data.Monoid ((<>))
 import GHC.Stack (callStack, prettySrcLoc)
@@ -21,6 +24,9 @@ data ThunderbunsException
                         CallStack
   -- ^ Input validation error
   | AuthenticationFailed CallStack -- ^ wrong username or password
+  | AuthorizationDenied CallStack
+  | InternalError String
+                  CallStack
 
 instance Show ThunderbunsException where
   show = showTBE
@@ -32,6 +38,9 @@ showTBE (ValidationException ms cs) =
   showEx "ValidationException" (L.intercalate ", " ms) cs
 showTBE (AuthenticationFailed cs) =
   showEx "AuthenticationFailed" "wrong username or password" cs
+showTBE (AuthorizationDenied cs) =
+  showEx "AuthorizationDenied" "invalid or expired token" cs
+showTBE (InternalError s cs) = showEx "InternalError" s cs
 
 showEx :: String -> String -> CallStack -> String
 showEx n msg cs =
@@ -43,5 +52,15 @@ showEx n msg cs =
 validationException :: HasCallStack => [String] -> ThunderbunsException
 validationException ms = ValidationException ms callStack
 
-authenticationDenied :: HasCallStack => ThunderbunsException
-authenticationDenied = AuthenticationFailed callStack
+authenticationFailed :: HasCallStack => ThunderbunsException
+authenticationFailed = AuthenticationFailed callStack
+
+authorizationDenied :: HasCallStack => ThunderbunsException
+authorizationDenied = AuthorizationDenied callStack
+
+internalError :: HasCallStack => String -> ThunderbunsException
+internalError s = InternalError s callStack
+
+maybeError :: MonadError e m => e -> Maybe a -> m a
+maybeError e Nothing = throwError e
+maybeError _ (Just a) = pure a

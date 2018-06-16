@@ -25,6 +25,7 @@ dependencies:
 - attoparsec
 - base16-bytestring
 - base64-bytestring
+- bifunctors
 - bytestring
 - cryptonite
 - dhall
