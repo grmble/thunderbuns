@@ -1,0 +1,3 @@
+logging - handle more strings types
+auth/db -> auth
+auth - auth error type, translate to servant error in server.auth

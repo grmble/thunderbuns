@@ -30,7 +30,6 @@ dependencies:
 - picolens
 - scientific
 - text
-- tfreetime
 - time
 - tprocess
 - unliftio

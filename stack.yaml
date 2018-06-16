@@ -6,7 +6,6 @@ packages:
 - hexdump-xxd
 - picolens
 - tcql4
-- tfreetime
 - tlogger
 - tprocess
 - thunderbuns

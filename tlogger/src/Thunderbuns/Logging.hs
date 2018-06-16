@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {- | Thunderbuns Logging
 
@@ -7,12 +8,17 @@ The output is compatible with bunyan.
 
 -}
 module Thunderbuns.Logging
-  ( HasLogger(..)
+  ( module Data.Time.Clock
+  , module Data.Time.Clock.POSIX
+  , module Data.Time.Clock.System
+  , HasLogger(..)
   , MonadTLogger(..)
-  , LoggingF(..)
   , Priority(..)
   , Logger
   , LogRecord(..)
+  , WrappedRIO(..)
+  , WrappedReader(..)
+  , HasSystemTime(..)
   , rootLogger
   , childLogger
   , loggerNamesL
@@ -24,29 +30,29 @@ module Thunderbuns.Logging
   , logTrace
   , logDuration
   , duration
+  , getCurrentTime
+  , getPOSIXTime
   , consoleHandler
   , noopHandler
-  , loggingIO
-  , loggingNoop
-  , treeLoggingIO
-  , treeLoggingNoop
   ) where
 
 import Control.Lens.PicoLens (Lens', over, view)
 import Control.Monad (unless, when)
-import Control.Monad.Free.Church
-import Control.Monad.Free.Combinators
+import Control.Monad.Except
 import Control.Monad.Reader
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
 import qualified Data.Aeson.Types as AT
 import qualified Data.ByteString.Lazy.Char8 as LBSC8
-import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import qualified Data.Scientific as Scientific
 import qualified Data.Text as T
-import qualified Data.Time.Clock.System as SC
+import Data.Time.Clock (UTCTime)
+import Data.Time.Clock.POSIX (POSIXTime)
+import qualified Data.Time.Clock.POSIX as C
+import Data.Time.Clock.System (SystemTime)
+import qualified Data.Time.Clock.System as C
 import GHC.Generics
 import Network.BSD (getHostName)
 import System.IO (hFlush, stdout)
@@ -96,7 +102,7 @@ class Monad m =>
   -- | Get the current time.
   --
   -- This simply wraps getSystemTime and is needed for the duration helpers
-  getLoggingTime :: m SC.SystemTime
+  getSystemTime :: m SystemTime
 
 -- | A Logger has a name, priority and context.
 --
@@ -238,30 +244,56 @@ logTrace = logRecord TRACE M.empty
 --
 --    uncurry
 --      (logRecord DEBUG) \
---      (duration <$> getLoggingTime <*> getLoggingTime)
-duration :: SC.SystemTime -> SC.SystemTime -> (AT.Object, T.Text)
+--      (duration <$> getSystemTime <*> getSystemTime)
+duration :: SystemTime -> SystemTime -> (AT.Object, T.Text)
 duration start end = do
   let dur = double end - double start
   let ctx = M.singleton "duration" (AT.Number $ Scientific.fromFloatDigits dur)
   let msg = T.pack $ printf "completed in %dms" ((round $ 1000 * dur) :: Int)
   (ctx, msg)
   where
-    double :: SC.SystemTime -> Double
+    double :: SystemTime -> Double
     double sc =
-      fromIntegral (SC.systemSeconds sc) +
-      fromIntegral (SC.systemNanoseconds sc) / 1e9
+      fromIntegral (C.systemSeconds sc) +
+      fromIntegral (C.systemNanoseconds sc) / 1e9
 
 -- | Log the duration of the action.
 logDuration :: MonadTLogger m => m a -> m a
 logDuration action = do
-  start <- getLoggingTime
+  start <- getSystemTime
   a <- action
-  end <- getLoggingTime
+  end <- getSystemTime
   uncurry (logRecord INFO) (duration start end)
   pure a
 
--- | IO Instance
-instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
+getCurrentTime :: MonadTLogger m => m UTCTime
+getCurrentTime = C.systemToUTCTime <$> getSystemTime
+
+getPOSIXTime :: MonadTLogger m => m POSIXTime
+getPOSIXTime = C.systemToPOSIXTime <$> getSystemTime
+
+-- | WrappedRIO wraps a reader/io
+--
+-- convention is: WrappedRIO for IO, WrappedReader for pure code/testing
+newtype WrappedRIO m a = WrappedRIO
+  { unwrapRIO :: m a
+  } deriving (Functor, Applicative, Monad, MonadIO)
+
+instance MonadTrans WrappedRIO where
+  lift = WrappedRIO
+
+-- this needs UndecidableInstances, problem is functional dependency m -> r in MonadReader
+instance MonadReader r m => MonadReader r (WrappedRIO m) where
+  ask = WrappedRIO ask
+  local f (WrappedRIO m) = WrappedRIO (local f m)
+
+instance MonadError e m => MonadError e (WrappedRIO m) where
+  throwError = lift . throwError
+  catchError (WrappedRIO m) handler = lift $ catchError m (unwrapRIO . handler)
+
+-- | Base instance using WrappedRIO
+instance (HasLogger r, MonadReader r m, MonadIO m) =>
+         MonadTLogger (WrappedRIO m) where
   localLogger n ctx action = do
     lg <- childLogger n ctx
     local (over loggerL (const lg)) action
@@ -269,7 +301,7 @@ instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
     lg <- asks (view loggerL)
     let pri' = intPriority pri
     when (pri' >= priority lg) $ do
-      tm <- liftIO SC.getSystemTime
+      tm <- liftIO C.getSystemTime
       liftIO $ handler lg (LogRecord (decorate lg tm (context lg)))
     where
       decorate lg t =
@@ -277,49 +309,50 @@ instance (HasLogger r, MonadIO m) => MonadTLogger (ReaderT r m) where
         M.insert "level" (A.Number $ fromIntegral $ intPriority pri) .
         M.insert "msg" (A.String msg) .
         M.union obj .
-        M.insert "time" (A.toJSON $ SC.systemToUTCTime t) .
+        M.insert "time" (A.toJSON $ C.systemToUTCTime t) .
         M.union (rootContext lg)
-  getLoggingTime = liftIO SC.getSystemTime
+  getSystemTime = liftIO C.getSystemTime
 
--- | Functor for Free instance
-data LoggingF x
-  = LogRecordF Priority
-               AT.Object
-               T.Text
-               x
-  | GetLoggingTimeF (SC.SystemTime -> x)
-  deriving (Functor)
+-- | Convenience instance for ReaderT r IO
+instance HasLogger r => MonadTLogger (ReaderT r IO) where
+  localLogger n ctx action = unwrapRIO $ localLogger n ctx (WrappedRIO action)
+  logRecord pri obj msg = unwrapRIO $ logRecord pri obj msg
+  getSystemTime = unwrapRIO getSystemTime
 
--- | Free MonadTLogger instance
-instance MonadTLogger (F (TreeF (T.Text, AT.Object) LoggingF)) where
-  localLogger n ctx action = liftF $ TreeF (n, ctx) action
-  logRecord pri ctx msg = liftF $ LeafF $ LogRecordF pri ctx msg ()
-  getLoggingTime = liftF $ LeafF $ GetLoggingTimeF id
+-- | Convenience instance for ReaderT r (ExceptT e IO)
+instance HasLogger r => MonadTLogger (ReaderT r (ExceptT e IO)) where
+  localLogger n ctx action = unwrapRIO $ localLogger n ctx (WrappedRIO action)
+  logRecord pri obj msg = unwrapRIO $ logRecord pri obj msg
+  getSystemTime = unwrapRIO getSystemTime
 
--- | Interpret the Free instance to IO
-treeLoggingIO ::
-     (HasLogger r, MonadReader r m, MonadTLogger m, MonadIO m)
-  => TreeF (T.Text, AT.Object) LoggingF a
-  -> m a
-treeLoggingIO (TreeF (n, ctx) logf) =
-  localLogger n ctx (foldF treeLoggingIO logf)
-treeLoggingIO (LeafF f) = loggingIO f
+-- | WrappedReader wraps a pure reader for testing
+newtype WrappedReader m a = WrappedReader
+  { unwrapReader :: m a
+  } deriving (Functor, Applicative, Monad, MonadIO)
 
--- | Pure interpreter for Free instance
-treeLoggingNoop ::
-     (HasLogger r, MonadReader r m)
-  => TreeF (T.Text, AT.Object) LoggingF a
-  -> m a
-treeLoggingNoop (TreeF _ logf) = foldF treeLoggingNoop logf
-treeLoggingNoop (LeafF f) = loggingNoop f
+instance MonadTrans WrappedReader where
+  lift = WrappedReader
 
-loggingIO ::
-     ( MonadTLogger m, MonadIO m)
-  => LoggingF a
-  -> m a
-loggingIO (LogRecordF pri ctx msg x) = logRecord pri ctx msg $> x
-loggingIO (GetLoggingTimeF f) = f <$> liftIO SC.getSystemTime
+-- this needs UndecidableInstances, problem is functional dependency m -> r in MonadReader
+instance MonadReader r m => MonadReader r (WrappedReader m) where
+  ask = WrappedReader ask
+  local f (WrappedReader m) = WrappedReader (local f m)
 
-loggingNoop :: (MonadReader r m) => LoggingF a -> m a
-loggingNoop (LogRecordF _ _ _ x) = pure x
-loggingNoop (GetLoggingTimeF f) = f <$> pure (SC.MkSystemTime 0 0)
+instance MonadError e m => MonadError e (WrappedReader m) where
+  throwError = lift . throwError
+  catchError (WrappedReader m) handler =
+    lift $ catchError m (unwrapReader . handler)
+
+-- | Base instance using WrappedRIO
+instance (HasSystemTime r, MonadReader r m) =>
+         MonadTLogger (WrappedReader m) where
+  localLogger _ _ action = action
+  logRecord _ _ _ = pure ()
+  getSystemTime = asks (view systemTime)
+
+-- | System time reader env for testing
+class HasSystemTime a where
+  systemTime :: Lens' a SystemTime
+
+instance HasSystemTime SystemTime where
+  systemTime = id

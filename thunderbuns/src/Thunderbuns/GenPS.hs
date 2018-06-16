@@ -9,7 +9,7 @@ import Language.PureScript.Bridge
 import Servant.API
 import Servant.Foreign
 import Servant.PureScript
-import Thunderbuns.DB.Auth
+import Thunderbuns.Auth.Types
 import Thunderbuns.Logging
 import Thunderbuns.Server
 import Thunderbuns.Server.Auth

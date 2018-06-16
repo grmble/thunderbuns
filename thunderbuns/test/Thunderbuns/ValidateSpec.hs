@@ -60,7 +60,7 @@ data User = User
   } deriving (Show, Eq)
 
 instance DefaultValidator User where
-  defaultValidator msg u =
+  defaultValidator _ u =
     User <$> defaultValidator (Just "name") (name u) <*>
     enumValidator (Just "status") (status u) <*>
     inRange 0 200 (Just "age") (age u)

@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 829dddae3eae1d93af29eb7b854cd96663226f92a775cf83b8260b7fb35584af
+-- hash: 01f511eb512a73acf36b1d8f053a76f33a054bfe70ad6a0160000fd323d9b6bc
 
 name:           tlogger
 version:        0.1.0.0
@@ -39,7 +39,6 @@ library
     , picolens
     , scientific
     , text
-    , tfreetime
     , time
     , tprocess
     , unliftio
@@ -69,7 +68,6 @@ test-suite tlogger-test
     , picolens
     , scientific
     , text
-    , tfreetime
     , time
     , tlogger
     , tprocess

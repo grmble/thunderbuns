@@ -14,7 +14,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Time.Clock.System as SC
 import Jose.Jwt
 import Network.HTTP.Types (statusCode)
-import Network.Wai (rawPathInfo, responseStatus)
+import Network.Wai (rawPathInfo, requestMethod, remoteHost, responseStatus)
 import Network.Wai.Handler.Warp
 import Network.Wai.Middleware.Prometheus (def, prometheus)
 import Prometheus (register)
@@ -24,16 +24,17 @@ import Servant.Server.Experimental.Auth
 import Thunderbuns.Config
 import Thunderbuns.Config.Server (HasServerConfig, port, staticRoot)
 import Thunderbuns.Logging
-import Thunderbuns.Server.Debug
 import Thunderbuns.Server.Auth
+import Thunderbuns.Server.Debug
 
 authServer :: Env -> Server UserAPI
-authServer e  = hoistServer userAPI (toHandler e) userServerT
+authServer e = hoistServer userAPI (toHandler e) userServerT
 
 debugServer :: Env -> JwtClaims -> Server DebugAPI
 debugServer e cs = hoistServer debugAPI (toHandler e) (debugServerT cs)
 
-type WebAPI = "auth" :> UserAPI :<|> "debug" :> AuthProtect "jwt-auth" :> DebugAPI
+type WebAPI
+   = "auth" :> UserAPI :<|> "debug" :> AuthProtect "jwt-auth" :> DebugAPI
 
 webAPI :: Proxy WebAPI
 webAPI = Proxy
@@ -49,8 +50,7 @@ staticAPI = Proxy
 staticServer :: (HasServerConfig e) => e -> Server StaticAPI
 staticServer e = serveDirectoryWebApp (T.unpack $ view staticRoot e)
 
-type CombinedAPI
-   = WebAPI :<|> "static" :> StaticAPI
+type CombinedAPI = WebAPI :<|> "static" :> StaticAPI
 
 combinedAPI :: Proxy CombinedAPI
 combinedAPI = Proxy
@@ -58,14 +58,14 @@ combinedAPI = Proxy
 combinedServer :: Env -> Server CombinedAPI
 combinedServer e = webServer e :<|> staticServer e
 
-startApp :: MonadIO m => ReaderT Env m ()
+startApp :: (MonadTLogger m, MonadIO m) => ReaderT Env m ()
 startApp
   -- register ghc metrics - needs +RTS -T
  = do
   _ <- liftIO $ register ghcMetrics
   e <- ask
   let p = view (server . port) e
-  logInfo ("Starting to serve on port " <> T.pack (show p))
+  lift $ logInfo ("Starting to serve on port " <> T.pack (show p))
   liftIO $ run (fromInteger p) (app e)
   where
     app e
@@ -83,9 +83,11 @@ startApp
             M.singleton
               "req"
               (AT.Object
-                 (M.singleton
-                    "url"
-                    (AT.String $ TE.decodeUtf8 $ rawPathInfo req)))
+                 (M.fromList
+                    [ ("remoteAddress", AT.String $ T.pack $ show $ remoteHost req)
+                    , ("method", AT.String $ TE.decodeUtf8 $ requestMethod req)
+                    , ("url", AT.String $ TE.decodeUtf8 $ rawPathInfo req)
+                    ]))
       lg <- runReaderT (childLogger "thunderbuns.server" ctx) (view loggerL e)
       let e' = over loggerL (const lg) e
       appE e' req $ \res -> do

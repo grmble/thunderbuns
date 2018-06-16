@@ -75,7 +75,7 @@ validate = validate' Nothing defaultValidator
 -- | Validate using default validator in RIO
 --
 -- validation errors will be thrown as ValidationException
-validateM :: (DefaultValidator a, MonadIO m) => a -> ReaderT e m (V a)
+validateM :: (DefaultValidator a, MonadReader r m, MonadIO m) => a -> m (V a)
 validateM a =
   case validate a of
     Left err -> throwIO $ validationException err
@@ -121,7 +121,7 @@ mkParser msg p =
     Just s -> p <?> s
 
 -- | An enum always validates, it can not have wrong values
-enumValidator :: (Enum a, Show a) => Validator a
+enumValidator :: Validator a
 enumValidator = const pure
 
 -- | A range validation

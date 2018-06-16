@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b5b95f463b8265be26f31412939da15d47c220e2cc8517f1de6e40f2f943e0cd
+-- hash: f4fb181d55842b4a4a5b8967fd0423a08f9c17d3df4b69bc55a776e5508fc995
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -68,12 +68,13 @@ library
     , warp
   exposed-modules:
       Lib
+      Thunderbuns.Auth.DB
+      Thunderbuns.Auth.Types
       Thunderbuns.CmdLine
       Thunderbuns.Config
       Thunderbuns.Config.DB
       Thunderbuns.Config.Jwt
       Thunderbuns.Config.Server
-      Thunderbuns.DB.Auth
       Thunderbuns.DB.Init
       Thunderbuns.DB.Internal
       Thunderbuns.Exception
@@ -81,6 +82,7 @@ library
       Thunderbuns.Server
       Thunderbuns.Server.Auth
       Thunderbuns.Server.Debug
+      Thunderbuns.Server.Types
       Thunderbuns.Validate
   other-modules:
       Paths_thunderbuns

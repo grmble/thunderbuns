@@ -2,19 +2,20 @@ module Thunderbuns.CmdLine where
 
 import Control.Lens (view)
 import Control.Monad.Except (runExceptT)
-import Control.Monad.Free.Church
 import Control.Monad.Reader
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Servant.Server
+import Thunderbuns.Auth.DB
+import Thunderbuns.Auth.Types
 import Thunderbuns.Config
-import Thunderbuns.DB.Auth
 import Thunderbuns.DB.Init
 import Thunderbuns.DB.Internal
 import Thunderbuns.GenPS
 import Thunderbuns.Logging
 import Thunderbuns.Server
 import Thunderbuns.Server.Auth
+import Thunderbuns.Server.Types ()
 import Thunderbuns.Validate
 import UnliftIO.Concurrent (forkIO)
 import UnliftIO.Exception (throwIO)
@@ -22,24 +23,26 @@ import UnliftIO.STM
 
 parseCommandLine :: ReaderT Env IO ()
 parseCommandLine =
-  ReaderT $ \e -> do
-    r <-
+  ReaderT $ \r -> do
+    go <-
       execParser
         (info
-           (commandParser <**> helper)
+           (commandParser r <**> helper)
            (fullDesc <>
             header "thunderbuns - producing hot air for fun and profit" <>
             progDesc "Start a server or perform administrative commands"))
-    x <- runExceptT $ runHandler' $ runReaderT r e
+    x <- runExceptT $ runHandler' $ runReaderT go r
     case x of
       Left err -> print err
       Right () -> pure ()
   where
-    commandParser =
+    commandParser r =
       hsubparser
         (command
            "serve"
-           (info (pure startApp) (progDesc "Run the server on PORT")) <>
+           (info
+              (pure (runReaderT startApp r))
+              (progDesc "Run the server on PORT")) <>
          command "db" (info dbParser (progDesc "Database administration")) <>
          command "gen" (info genParser (progDesc "Generate code or secrets")) <>
          command "user" (info userParser (progDesc "Add or authorize users")))
@@ -71,13 +74,11 @@ parseCommandLine =
       argument str (metavar "PASSWORD")
     addUserParser = do
       up <- nameAndPass
-      pure $
-        validateM up >>=
-        foldF authDbIO . Thunderbuns.DB.Auth.addUser
+      pure $ validateM up >>= Thunderbuns.Auth.DB.addUser
     authUserParser = do
       up <- nameAndPass
       pure $
-        validateM up >>= Thunderbuns.Server.Auth.authenticate >>= liftIO . print
+        validateM up >>= Thunderbuns.Auth.DB.authenticate >>= liftIO . print
     dbParser =
       hsubparser
         (command
