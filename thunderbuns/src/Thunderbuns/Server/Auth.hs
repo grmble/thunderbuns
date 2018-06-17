@@ -24,7 +24,6 @@ import Thunderbuns.Config
 import Thunderbuns.Config.Jwt
 import Thunderbuns.Logging
 import Thunderbuns.Server.Types
-import Thunderbuns.Validate
 
 type UserAPI
   -- authorize
@@ -38,7 +37,7 @@ userServerT ::
   => ServerT UserAPI (ReaderT r Handler)
 userServerT = authenticateUser
   where
-    authenticateUser up = mapError (validateM up >>= authenticate)
+    authenticateUser up = mapError (validateTB up >>= authenticate)
 
 -- | Generate a random secret suitable for jwt tokens
 --

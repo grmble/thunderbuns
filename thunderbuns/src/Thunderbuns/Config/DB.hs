@@ -14,7 +14,7 @@ data PasswdOptions = Argon2Options
   { iterations :: Integer
   , memory :: Integer
   , parallelism :: Integer
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 $(ATH.deriveJSON ATH.defaultOptions ''PasswdOptions)
 
@@ -23,9 +23,9 @@ instance Interpret PasswdOptions
 -- | DbConfig is the database configuration
 data DbConfig = DbConfig
   { _port :: Integer
-  , _host :: T.Text
+  , _host :: T.Text 
   , _passwdOptions :: PasswdOptions
-  } deriving (Generic, Show)
+  } deriving (Generic, Show, Eq)
 
 $(makeClassy ''DbConfig)
 

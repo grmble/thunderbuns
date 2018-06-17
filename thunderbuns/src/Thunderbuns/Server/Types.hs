@@ -12,6 +12,7 @@ import Servant
 import Servant.Server (Handler)
 import Thunderbuns.Exception
 import Thunderbuns.Logging
+import Thunderbuns.Validate
 
 instance HasLogger r => MonadTLogger (ReaderT r Handler) where
   localLogger n ctx action = unwrapRIO $ localLogger n ctx (WrappedRIO action)
@@ -55,3 +56,6 @@ tbServantErr (AuthenticationFailed _) =
 tbServantErr (InternalError _ _) = servantErr err500 "Internal error"
 tbServantErr (ValidationException ms _) =
   servantErr err400 ("Validation error: " <> T.pack (L.intercalate ", " ms))
+
+validateTB :: (MonadError ThunderbunsException m, DefaultValidator a) => a -> m (V a)
+validateTB a = liftEither $ first validationException $ validate a

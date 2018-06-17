@@ -1,9 +1,11 @@
+(A) simple channel api
+(A) simple channel list
 (A) supervise connection +cql4
-(B) typesafe form result +forms +frontend
-(C) debug mode; collect and replay messages +bonsai
-(C) logging - handle more strings types
-auth header reader ??? maybe done? +backend
-caek dependency ???+bonsai
+(B) auth header reader +frontend
+(C) typesafe form result +forms +frontend
+(D) debug mode; collect and replay messages +bonsai
+(D) logging - handle more strings types
+caek dependency ??? +bonsai
 generate show instances ??? +backend
 no readers for msg, case expressions ??? +frontend
 no updaters ??? +frontend

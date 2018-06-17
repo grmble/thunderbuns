@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 07ecc873569ffb1b6870d5f14531fad1ec0bf7a9936bb1cc47205da917a62e4e
+-- hash: 74746cade02d3396fd236cc23efa1e7c8da38540e684a09a1f45aca2c688893a
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -190,6 +190,7 @@ test-suite thunderbuns-test
     , warp
   other-modules:
       LibSpec
+      Thunderbuns.AuthSpec
       Thunderbuns.ValidateSpec
       Paths_thunderbuns
   default-language: Haskell2010

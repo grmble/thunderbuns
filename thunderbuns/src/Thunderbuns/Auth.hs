@@ -68,7 +68,7 @@ authenticate up = do
   let p = TE.encodeUtf8 (pass (unV up))
   (o, s, h) <- selectPasswd (user (unV up))
   case eitherCryptoError $ hash (argonOpts o) p s 16 of
-    Left err -> throwError $ internalError (show err)
+    Left err -> throwError $ internalError ("hash: " ++ show err)
     Right h' ->
       if h == h'
         then getPOSIXTime >>= newJwtToken (user (unV up))
@@ -111,7 +111,7 @@ decodeJwtSecret = do
   let (s, err) = B16.decode $ TE.encodeUtf8 t16
   if err == ""
     then pure s
-    else throwError $ internalError (show err)
+    else throwError $ internalError ("B16.decode: " ++ show err)
 
 decodeToken' ::
      B.ByteString -> POSIXTime -> B.ByteString -> Either T.Text JwtClaims
@@ -135,7 +135,8 @@ decodeToken tk = do
   t <- getPOSIXTime
   s <- decodeJwtSecret
   logDebug ("decodeToken: s=" <> TE.decodeUtf8 s)
-  (_, bs) <- liftEither $ first (\e -> internalError ("hmacDecode: " ++ show e)) $ hmacDecode s tk
+  -- a changed secret will cause the hmacDecode to fail (message: bad signature)
+  (_, bs) <- liftEither $ first (const authorizationDenied) $ hmacDecode s tk
   c <- liftEither $ first (\e -> internalError ("json decode: " ++ e)) $ A.eitherDecodeStrict' bs
   et <- maybeError (internalError "no expiration in token") (jwtExp c)
   if et < IntDate t

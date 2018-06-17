@@ -39,6 +39,7 @@ module Thunderbuns.Logging
 import Control.Lens.PicoLens (Lens', over, view)
 import Control.Monad (unless, when)
 import Control.Monad.Except
+import Control.Monad.State
 import Control.Monad.Reader
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as ATH
@@ -342,6 +343,9 @@ instance MonadError e m => MonadError e (WrappedReader m) where
   throwError = lift . throwError
   catchError (WrappedReader m) handler =
     lift $ catchError m (unwrapReader . handler)
+
+instance MonadState s m => MonadState s (WrappedReader m) where
+  state = lift . state
 
 -- | Base instance using WrappedRIO
 instance (HasSystemTime r, MonadReader r m) =>
