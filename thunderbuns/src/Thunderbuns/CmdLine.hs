@@ -3,11 +3,14 @@ module Thunderbuns.CmdLine where
 import Control.Lens (view)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader
+import Data.Foldable
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Servant.Server
 import Thunderbuns.Auth
 import Thunderbuns.Auth.Types
+import Thunderbuns.Channel
+import Thunderbuns.Channel.Types
 import Thunderbuns.Config
 import Thunderbuns.DB.Init
 import Thunderbuns.DB.Internal
@@ -45,7 +48,10 @@ parseCommandLine =
               (progDesc "Run the server on PORT")) <>
          command "db" (info dbParser (progDesc "Database administration")) <>
          command "gen" (info genParser (progDesc "Generate code or secrets")) <>
-         command "user" (info userParser (progDesc "Add or authorize users")))
+         command "user" (info userParser (progDesc "Add or authorize users")) <>
+         command
+           "channel"
+           (info channelParser (progDesc "Add or list channel(s)")))
     genParser =
       hsubparser
         (command
@@ -69,6 +75,12 @@ parseCommandLine =
            (info
               authUserParser
               (progDesc "Authorize the given USERNAME and PASSWORD")))
+    channelParser =
+      hsubparser
+        (command
+           "add"
+           (info addChannelParser (progDesc "Add a channel with NAME")) <>
+         command "list" (info listChannelsParser (progDesc "List channels")))
     nameAndPass =
       UserPass <$> argument str (metavar "USERNAME") <*>
       argument str (metavar "PASSWORD")
@@ -78,7 +90,13 @@ parseCommandLine =
     authUserParser = do
       up <- nameAndPass
       pure $
-        mapError (validateM up >>= Thunderbuns.Auth.authenticate >>= liftIO . print)
+        mapError
+          (validateM up >>= Thunderbuns.Auth.authenticate >>= liftIO . print)
+    addChannelParser = do
+      c <- Channel <$> argument str (metavar "NAME")
+      pure $ mapError (validateM c >>= Thunderbuns.Channel.addChannel)
+    listChannelsParser =
+      pure $ mapError Thunderbuns.Channel.list >>= traverse_ (liftIO . print)
     dbParser =
       hsubparser
         (command

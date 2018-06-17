@@ -159,7 +159,7 @@ instance HasDbConnection r => MonadAuthDb (ReaderT r (ExceptT ThunderbunsExcepti
       go =
         execute
           Quorum
-          "insert into tb_users.passwd (username, config, salt, hash) values (?, ?, ?, ?)"
+          "insert into tb.passwd (username, config, salt, hash) values (?, ?, ?, ?)"
           [ TextValue n
           , BlobValue (BL.toStrict $ A.encode o)
           , BlobValue s
@@ -169,7 +169,7 @@ instance HasDbConnection r => MonadAuthDb (ReaderT r (ExceptT ThunderbunsExcepti
     where
       go = do
         let cql =
-              "select config, salt, hash from tb_users.passwd where username=?"
+              "select config, salt, hash from tb.passwd where username=?"
         rows <- executeQuery Quorum cql [TextValue n]
         (mo, s, h) <-
           extractSingleRow ((,,) <$> extract <*> extract <*> extract) rows

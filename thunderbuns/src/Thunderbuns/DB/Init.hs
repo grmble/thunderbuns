@@ -1,11 +1,11 @@
 module Thunderbuns.DB.Init where
 
-import Data.Semigroup ((<>))
-import Data.Foldable (for_)
 import Control.Monad.Reader
-import Thunderbuns.Config
+import Data.Foldable (for_)
+import Data.Semigroup ((<>))
 import Database.CQL4
-
+import Thunderbuns.Config
+import qualified Data.Text.IO as T
 
 initDB :: (HasDbConnection e, MonadIO m) => ReaderT e m ()
 initDB = do
@@ -15,11 +15,27 @@ initDB = do
 initDB' :: ConnectionIO ()
 initDB' = do
   let cql =
-        [ "create keyspace if not exists tb_users " <>
-          "with replication = { 'class': 'SimpleStrategy', 'replication_factor': 1} " <>
-          "and durable_writes = false"
-        , "use tb_users"
+        [ "create keyspace if not exists tb " <>
+          "with replication = { 'class': 'SimpleStrategy', 'replication_factor': 1}"
+        , "use tb"
         , "create table if not exists passwd (" <>
           "  username text, config blob, salt blob, hash blob, " <>
-          "  primary key (username))"]
-  for_ cql (\c -> execute One c [])
+          "  primary key (username))"
+        , "create table if not exists channel (" <>
+          "  channel text, " <>
+          "  primary key (channel))"
+        , "create table if not exists msg (" <>
+          "  channel text, " <>
+          "  pdate date, " <>
+          "  id timeuuid, " <>
+          "  user text, " <>
+          "  msg text, " <>
+          "  primary key (channel, id)) " <>
+          "with comment = 'partition key: channel/date combo.  query by channel and data/time_uuid' and " <>
+          "  compaction = {'class': 'DateTieredCompactionStrategy'} and " <>
+          "  clustering order by (id DESC)"
+          -- "compaction = { 'class': 'TimeWindowCompactionStrategy', 'compaction_window_unit': hours, 'compation_window_size': 1 }
+        ]
+  for_ cql $ \c -> do
+    liftIO (T.putStr "Executing: " *> T.putStrLn c)
+    execute One c []
