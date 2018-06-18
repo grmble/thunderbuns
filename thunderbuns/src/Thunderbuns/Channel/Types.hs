@@ -4,11 +4,12 @@ module Thunderbuns.Channel.Types where
 
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import qualified Data.Text as T
+import GHC.Generics (Generic)
 import Thunderbuns.Validate
 
 newtype Channel = Channel
   { channelName :: T.Text
-  } deriving (Eq, Ord, Show)
+  } deriving (Eq, Ord, Generic, Show)
 
 $(deriveJSON defaultOptions ''Channel)
 

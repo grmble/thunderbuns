@@ -12,35 +12,19 @@ import Prim (String)
 import Prelude
 import Data.Generic (class Generic)
 
-newtype UserPass =
-    UserPass {
-      user :: String
-    , pass :: String
+newtype Channel =
+    Channel {
+      channelName :: String
     }
 
-derive instance genericUserPass :: Generic UserPass
+derive instance genericChannel :: Generic Channel
 
-derive instance newtypeUserPass :: Newtype UserPass _
-
-
---------------------------------------------------------------------------------
-_UserPass :: Iso' UserPass { user :: String, pass :: String}
-_UserPass = _Newtype
-
---------------------------------------------------------------------------------
-newtype Token =
-    Token {
-      token :: String
-    }
-
-derive instance genericToken :: Generic Token
-
-derive instance newtypeToken :: Newtype Token _
+derive instance newtypeChannel :: Newtype Channel _
 
 
 --------------------------------------------------------------------------------
-_Token :: Iso' Token { token :: String}
-_Token = _Newtype
+_Channel :: Iso' Channel { channelName :: String}
+_Channel = _Newtype
 
 --------------------------------------------------------------------------------
 data Priority =
@@ -90,5 +74,36 @@ _TRACE = prism' (\_ -> TRACE) f
   where
     f TRACE = Just unit
     f _ = Nothing
+
+--------------------------------------------------------------------------------
+newtype UserPass =
+    UserPass {
+      user :: String
+    , pass :: String
+    }
+
+derive instance genericUserPass :: Generic UserPass
+
+derive instance newtypeUserPass :: Newtype UserPass _
+
+
+--------------------------------------------------------------------------------
+_UserPass :: Iso' UserPass { user :: String, pass :: String}
+_UserPass = _Newtype
+
+--------------------------------------------------------------------------------
+newtype Token =
+    Token {
+      token :: String
+    }
+
+derive instance genericToken :: Generic Token
+
+derive instance newtypeToken :: Newtype Token _
+
+
+--------------------------------------------------------------------------------
+_Token :: Iso' Token { token :: String}
+_Token = _Newtype
 
 --------------------------------------------------------------------------------

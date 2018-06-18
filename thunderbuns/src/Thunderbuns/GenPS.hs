@@ -10,14 +10,16 @@ import Servant.API
 import Servant.Foreign
 import Servant.PureScript
 import Thunderbuns.Auth.Types
+import Thunderbuns.Channel.Types
 import Thunderbuns.Logging
 import Thunderbuns.Server
 
 myTypes :: [SumType 'Haskell]
 myTypes =
-  [ mkSumType (Proxy :: Proxy UserPass)
-  , mkSumType (Proxy :: Proxy Token)
+  [ mkSumType (Proxy :: Proxy Channel)
   , mkSumType (Proxy :: Proxy Priority)
+  , mkSumType (Proxy :: Proxy UserPass)
+  , mkSumType (Proxy :: Proxy Token)
   ]
 
 generatePurescript :: IO ()
@@ -29,7 +31,9 @@ generatePurescript = do
 -- | Move the types from Thunderbuns.Logging to Thunderbuns.WebAPI.Types
 fixTypesModule :: BridgePart
 fixTypesModule = do
-  typeModule ^== "Thunderbuns.Logging" <|> typeModule ^== "Thunderbuns.Auth.Types" <|>
+  typeModule ^== "Thunderbuns.Logging" <|>
+    typeModule ^== "Thunderbuns.Auth.Types" <|>
+    typeModule ^== "Thunderbuns.Channel.Types" <|>
     typeModule ^== "Thunderbuns.Server.Auth"
   t <- view haskType
   TypeInfo (_typePackage t) "Thunderbuns.WebAPI.Types" (_typeName t) <$>

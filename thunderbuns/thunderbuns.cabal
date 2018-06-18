@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 36b64eba4dce6c1f80938b355e523051fa2402f252102f3f481514b97d875512
+-- hash: d8b6efdd8073e2c70fbbedb098dce8ff95a59f068b143603ecdc239ba1b8c181
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -84,6 +84,7 @@ library
       Thunderbuns.GenPS
       Thunderbuns.Server
       Thunderbuns.Server.Auth
+      Thunderbuns.Server.Channel
       Thunderbuns.Server.Debug
       Thunderbuns.Server.Types
       Thunderbuns.Validate

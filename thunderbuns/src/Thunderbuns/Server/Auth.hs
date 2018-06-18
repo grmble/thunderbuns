@@ -25,16 +25,16 @@ import Thunderbuns.Config.Jwt
 import Thunderbuns.Logging
 import Thunderbuns.Server.Types
 
-type UserAPI
+type AuthAPI
   -- authorize
    = ReqBody '[ JSON] UserPass :> Post '[ JSON] Token
 
-userAPI :: Proxy UserAPI
-userAPI = Proxy
+authAPI :: Proxy AuthAPI
+authAPI = Proxy
 
 userServerT ::
      (HasLogger r, HasDbConnection r, HasJwtConfig r)
-  => ServerT UserAPI (ReaderT r Handler)
+  => ServerT AuthAPI (ReaderT r Handler)
 userServerT = authenticateUser
   where
     authenticateUser up = mapError (validateTB up >>= authenticate)

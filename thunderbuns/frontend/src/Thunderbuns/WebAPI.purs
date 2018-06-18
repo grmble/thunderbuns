@@ -18,7 +18,7 @@ import Prim (Array, String)
 import Servant.PureScript.Affjax (AjaxError, affjax, defaultRequest)
 import Servant.PureScript.Settings (SPSettingsDecodeJson_(..), SPSettingsEncodeJson_(..), SPSettings_(..), gDefaultToURLPiece)
 import Servant.PureScript.Util (encodeHeader, encodeListQuery, encodeQueryItem, encodeURLPiece, getResult)
-import Thunderbuns.WebAPI.Types (Priority, Token, UserPass)
+import Thunderbuns.WebAPI.Types (Channel, Priority, Token, UserPass)
 
 newtype SPParams_ = SPParams_ { baseURL :: String
                               }
@@ -46,6 +46,53 @@ postAuth reqBody = do
   affResp <- affjax affReq
   let decodeJson = case spOpts_.decodeJson of SPSettingsDecodeJson_ d -> d
   getResult affReq decodeJson affResp
+
+getChannel :: forall eff m.
+              MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m
+              => String -> m (Array Channel)
+getChannel authorization = do
+  spOpts_' <- ask
+  let spOpts_ = case spOpts_' of SPSettings_ o -> o
+  let spParams_ = case spOpts_.params of SPParams_ ps_ -> ps_
+  let baseURL = spParams_.baseURL
+  let httpMethod = "GET"
+  let queryString = ""
+  let reqUrl = baseURL <> "channel" <> queryString
+  let reqHeaders =
+        [{ field : "Authorization" , value : encodeHeader spOpts_' authorization
+         }]
+  let affReq = defaultRequest
+                 { method = httpMethod
+                 , url = reqUrl
+                 , headers = defaultRequest.headers <> reqHeaders
+                 }
+  affResp <- affjax affReq
+  let decodeJson = case spOpts_.decodeJson of SPSettingsDecodeJson_ d -> d
+  getResult affReq decodeJson affResp
+
+putChannel :: forall eff m.
+              MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m
+              => String -> Channel -> m Unit
+putChannel authorization reqBody = do
+  spOpts_' <- ask
+  let spOpts_ = case spOpts_' of SPSettings_ o -> o
+  let spParams_ = case spOpts_.params of SPParams_ ps_ -> ps_
+  let baseURL = spParams_.baseURL
+  let httpMethod = "PUT"
+  let queryString = ""
+  let reqUrl = baseURL <> "channel" <> queryString
+  let reqHeaders =
+        [{ field : "Authorization" , value : encodeHeader spOpts_' authorization
+         }]
+  let encodeJson = case spOpts_.encodeJson of SPSettingsEncodeJson_ e -> e
+  let affReq = defaultRequest
+                 { method = httpMethod
+                 , url = reqUrl
+                 , headers = defaultRequest.headers <> reqHeaders
+                 , content = toNullable <<< Just <<< stringify <<< encodeJson $ reqBody
+                 }
+  _ <- affjax affReq
+  pure unit
 
 getDebug :: forall eff m.
             MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m

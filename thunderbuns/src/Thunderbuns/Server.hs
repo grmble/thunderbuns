@@ -14,7 +14,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Time.Clock.System as SC
 import Jose.Jwt
 import Network.HTTP.Types (statusCode)
-import Network.Wai (rawPathInfo, requestMethod, remoteHost, responseStatus)
+import Network.Wai (rawPathInfo, remoteHost, requestMethod, responseStatus)
 import Network.Wai.Handler.Warp
 import Network.Wai.Middleware.Prometheus (def, prometheus)
 import Prometheus (register)
@@ -25,22 +25,26 @@ import Thunderbuns.Config
 import Thunderbuns.Config.Server (HasServerConfig, port, staticRoot)
 import Thunderbuns.Logging
 import Thunderbuns.Server.Auth
+import Thunderbuns.Server.Channel
 import Thunderbuns.Server.Debug
 
-authServer :: Env -> Server UserAPI
-authServer e = hoistServer userAPI (toHandler e) userServerT
+authServer :: Env -> Server AuthAPI
+authServer r = hoistServer authAPI (toHandler r) userServerT
 
 debugServer :: Env -> JwtClaims -> Server DebugAPI
-debugServer e cs = hoistServer debugAPI (toHandler e) (debugServerT cs)
+debugServer r cs = hoistServer debugAPI (toHandler r) (debugServerT cs)
+
+channelServer :: Env -> JwtClaims -> Server ChannelAPI
+channelServer r cs = hoistServer channelAPI (toHandler r) (channelServerT cs)
 
 type WebAPI
-   = "auth" :> UserAPI :<|> "debug" :> AuthProtect "jwt-auth" :> DebugAPI
+   = "auth" :> AuthAPI :<|> "channel" :> AuthProtect "jwt-auth" :> ChannelAPI :<|> "debug" :> AuthProtect "jwt-auth" :> DebugAPI
 
 webAPI :: Proxy WebAPI
 webAPI = Proxy
 
 webServer :: Env -> Server WebAPI
-webServer e = authServer e :<|> debugServer e
+webServer r = authServer r :<|> channelServer r :<|> debugServer r
 
 type StaticAPI = Raw
 
@@ -84,7 +88,8 @@ startApp
               "req"
               (AT.Object
                  (M.fromList
-                    [ ("remoteAddress", AT.String $ T.pack $ show $ remoteHost req)
+                    [ ( "remoteAddress"
+                      , AT.String $ T.pack $ show $ remoteHost req)
                     , ("method", AT.String $ TE.decodeUtf8 $ requestMethod req)
                     , ("url", AT.String $ TE.decodeUtf8 $ rawPathInfo req)
                     ]))
@@ -104,8 +109,8 @@ startApp
         runReaderT (logRecord INFO obj' msg) lg
         pure responded
 
-toHandler :: e -> ReaderT e Handler a -> Handler a
-toHandler e r = runReaderT r e
+toHandler :: r -> ReaderT r Handler a -> Handler a
+toHandler r m = runReaderT m r
 
 -- | We need to specify the data returned after authentication
 type instance AuthServerData (AuthProtect "jwt-auth") = JwtClaims
