@@ -20,7 +20,8 @@ import Servant.PureScript.Settings (SPSettingsDecodeJson_(..), SPSettingsEncodeJ
 import Servant.PureScript.Util (encodeHeader, encodeListQuery, encodeQueryItem, encodeURLPiece, getResult)
 import Thunderbuns.WebAPI.Types (Channel, Priority, Token, UserPass)
 
-newtype SPParams_ = SPParams_ { baseURL :: String
+newtype SPParams_ = SPParams_ { authorization :: String
+                              , baseURL :: String
                               }
 
 postAuth :: forall eff m.
@@ -49,11 +50,12 @@ postAuth reqBody = do
 
 getChannel :: forall eff m.
               MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m
-              => String -> m (Array Channel)
-getChannel authorization = do
+              => m (Array Channel)
+getChannel = do
   spOpts_' <- ask
   let spOpts_ = case spOpts_' of SPSettings_ o -> o
   let spParams_ = case spOpts_.params of SPParams_ ps_ -> ps_
+  let authorization = spParams_.authorization
   let baseURL = spParams_.baseURL
   let httpMethod = "GET"
   let queryString = ""
@@ -72,11 +74,12 @@ getChannel authorization = do
 
 putChannel :: forall eff m.
               MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m
-              => String -> Channel -> m Unit
-putChannel authorization reqBody = do
+              => Channel -> m Unit
+putChannel reqBody = do
   spOpts_' <- ask
   let spOpts_ = case spOpts_' of SPSettings_ o -> o
   let spParams_ = case spOpts_.params of SPParams_ ps_ -> ps_
+  let authorization = spParams_.authorization
   let baseURL = spParams_.baseURL
   let httpMethod = "PUT"
   let queryString = ""
@@ -96,11 +99,12 @@ putChannel authorization reqBody = do
 
 getDebug :: forall eff m.
             MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m
-            => String -> m (Array (Tuple String (Maybe Priority)))
-getDebug authorization = do
+            => m (Array (Tuple String (Maybe Priority)))
+getDebug = do
   spOpts_' <- ask
   let spOpts_ = case spOpts_' of SPSettings_ o -> o
   let spParams_ = case spOpts_.params of SPParams_ ps_ -> ps_
+  let authorization = spParams_.authorization
   let baseURL = spParams_.baseURL
   let httpMethod = "GET"
   let queryString = ""
@@ -119,11 +123,12 @@ getDebug authorization = do
 
 postDebug :: forall eff m.
              MonadAsk (SPSettings_ SPParams_) m => MonadError AjaxError m => MonadAff ( ajax :: AJAX | eff) m
-             => String -> Array (Tuple String (Maybe Priority)) -> m Unit
-postDebug authorization reqBody = do
+             => Array (Tuple String (Maybe Priority)) -> m Unit
+postDebug reqBody = do
   spOpts_' <- ask
   let spOpts_ = case spOpts_' of SPSettings_ o -> o
   let spParams_ = case spOpts_.params of SPParams_ ps_ -> ps_
+  let authorization = spParams_.authorization
   let baseURL = spParams_.baseURL
   let httpMethod = "POST"
   let queryString = ""

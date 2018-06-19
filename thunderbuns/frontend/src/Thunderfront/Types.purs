@@ -7,12 +7,13 @@ import Bonsai.Forms (FormMsg, FormModel)
 import Bonsai.Forms.Model (emptyFormModel)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Lens (Lens')
+import Data.Lens (Lens', view)
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
+import Thunderbuns.WebAPI.Types (Channel(..), _Channel)
 
 -- | Main application model
 -- |
@@ -37,8 +38,8 @@ newtype Model =
 emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
-        , channelList: ChannelList { activeChannel: "default"
-                                   , channels: ["default"]}
+        , channelList: ChannelList { activeChannel: (Channel { channelName: "default" })
+                                   , channels: [Channel { channelName: "" } ]}
         , channelModel: ChannelModel { messages: []}
         , formModels: FormModels { inputModel: emptyFormModel
                                  , loginFormModel: emptyFormModel}}
@@ -73,19 +74,22 @@ instance jwtTokenModel :: HasJwtToken Model where
 -- | and the currently active one
 newtype ChannelList =
   ChannelList
-  { activeChannel :: String
-  , channels :: Array String
+  { activeChannel :: Channel
+  , channels :: Array Channel
   }
 
 derive instance newtypeChannelList :: Newtype ChannelList _
 derive instance genericChannelList :: Generic ChannelList _
 instance showChannelList :: Show ChannelList where
-  show = genericShow
+  show x = show (map (view channelName) (view channels x))
 
-activeChannel :: Lens' ChannelList String
+channelName :: Lens' Channel String
+channelName = _Channel <<< prop (SProxy :: SProxy "channelName")
+
+activeChannel :: Lens' ChannelList Channel
 activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
 
-channels :: Lens' ChannelList (Array String)
+channels :: Lens' ChannelList (Array Channel)
 channels = _Newtype <<< prop (SProxy :: SProxy "channels")
 
 class HasChannelList a where
@@ -160,6 +164,7 @@ data Msg
   = JwtTokenMsg (Maybe String)
   | InputFormMsg FormMsg
   | LoginFormMsg FormMsg
+  | ChannelListMsg (Array Channel)
 
 derive instance genericMsg :: Generic Msg _
 -- XXX FormModel show instance

@@ -50,7 +50,7 @@ fixHashmap = do
 
 -- | Set the PS api module to Thunderbuns.WebAPI
 mySettings :: Settings
-mySettings = set apiModuleName "Thunderbuns.WebAPI" defaultSettings
+mySettings = set apiModuleName "Thunderbuns.WebAPI" (addReaderParam "Authorization" defaultSettings)
 
 myBridge :: BridgePart
 myBridge = defaultBridge <|> fixTypesModule <|> fixHashmap

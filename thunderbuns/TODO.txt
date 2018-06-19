@@ -1,11 +1,7 @@
 (A) simple channel api
-(A) simple channel list
 (A) supervise connection +cql4
-(B) auth header reader +frontend
+(B) replace caek dependency (jsdom-simulant) - security warning for jsdom-simulant +bonsai
 (C) typesafe form result +forms +frontend
-(D) debug mode; collect and replay messages +bonsai
-(D) logging - handle more strings types
-caek dependency ??? +bonsai
-generate show instances ??? +backend
-no readers for msg, case expressions ??? +frontend
-no updaters ??? +frontend
+(D) logging - handle more strings types +backend
+(E) debug mode; collect and replay messages +bonsai
+generate show instances for generated purescript types +backend +frontend

@@ -2,25 +2,26 @@ module Main where
 
 import Prelude
 
-import Bonsai (BONSAI, Cmd, debugProgram, noDebug, simpleTask)
+import Bonsai (BONSAI, Cmd, debugProgram, emitMessage, emittingTask, noDebug)
 import Bonsai.DOM (DOM, ElementId(..), document, effF, locationHash, window)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
-import Bonsai.Html (VNode, div_, mapMarkup, render, text, (!))
+import Bonsai.Html (VNode, div_, li, mapMarkup, render, text, ul, (!))
 import Bonsai.Html.Attributes (cls, id_)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (EXCEPTION)
-import Control.Monad.State (State, runState)
+import Control.Monad.State (State, runState, get)
 import Control.Plus (empty)
-import Data.Lens (assign, modifying, use, view)
+import Data.Foldable (for_)
+import Data.Lens (assign, modifying, set, use, view)
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple)
 import Network.HTTP.Affjax (AJAX)
-import Thunderbuns.WebAPI (postAuth)
-import Thunderbuns.WebAPI.Types (Token(..), UserPass(..))
+import Thunderbuns.WebAPI (getChannel, postAuth)
+import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
 import Thunderfront.Forms.Login (loginForm)
-import Thunderfront.Utils (runAjax, spSettings)
-import Thunderfront.Types (class HasInputModel, class HasJwtToken, class HasLoginFormModel, Model, Msg(..), emptyModel, inputModel, jwtToken, loginFormModel)
+import Thunderfront.Types (class HasInputModel, class HasChannelList, class HasJwtToken, class HasLoginFormModel, Model, Msg(..), channels, channelList, channelName, emptyModel, inputModel, jwtToken, loginFormModel)
+import Thunderfront.Utils (runAjax)
 
 update
   :: forall eff
@@ -30,6 +31,7 @@ update
 update (JwtTokenMsg msg) = runState $ updateJwtToken msg
 update (LoginFormMsg msg) = runState $ updateLoginForm msg
 update (InputFormMsg msg) = runState $ updateInputForm msg
+update (ChannelListMsg msg) = runState $ updateChannelList msg
 
 updateJwtToken
   :: forall eff m. HasJwtToken m
@@ -39,7 +41,7 @@ updateJwtToken jwt = do
   pure empty
 
 updateLoginForm
-  :: forall eff m. HasLoginFormModel m
+  :: forall eff m. HasLoginFormModel m => HasJwtToken m
   => FormMsg -> State m (Cmd (ajax::AJAX|eff) Msg)
 updateLoginForm FormOK = do
   -- XXX: it's required -- type safe helpers for form lib?
@@ -47,11 +49,22 @@ updateLoginForm FormOK = do
   p <- (fromMaybe "" <<< lookup "login_password") <$> use loginFormModel
   -- reset the password for the next time the form is shown
   modifying loginFormModel (M.delete "password")
-  pure $ simpleTask $ \_ -> do
-    Token {token} <- runAjax (postAuth (UserPass { user: u, pass: p })) spSettings
-    pure $ JwtTokenMsg $ Just token
+  model <- get
+  pure $ emittingTask $ \ctx -> do
+    Token {token} <- runAjax (postAuth (UserPass {user: u, pass:p})) model
+    emitMessage ctx (JwtTokenMsg $ Just token)
+    let model' = set jwtToken (Just token) model
+    cs <- runAjax getChannel model'
+    emitMessage ctx (ChannelListMsg cs)
 updateLoginForm msg = do
   modifying loginFormModel (updatePlain msg)
+  pure empty
+
+
+updateChannelList :: forall eff m. HasJwtToken m => HasChannelList m
+  => Array Channel -> State m (Cmd (|eff) Msg)
+updateChannelList cs = do
+  assign (channelList <<< channels) cs
   pure empty
 
 updateInputForm
@@ -71,7 +84,9 @@ viewMain model = do
           Nothing ->
             mapMarkup LoginFormMsg $ loginForm model
           Just tk ->
-            div_ $ text "blubb"
+            div_ $ ul $ do
+              for_ (view (channelList <<< channels) model) $ \c -> do
+                li $ text (view channelName c)
 
 
 main :: Eff (bonsai::BONSAI, dom::DOM, exception::EXCEPTION) Unit
