@@ -1,5 +1,6 @@
 # lts-11.13 (ghc 8.2.2) has dhall 1.11.1
 # nightly-2018-6-12 (ghc 8.4.3) has dhall 1.14, but big upgrade
+# nightly-2018-06-21 has purescript-bride 0.13
 resolver: lts-11.13
 
 packages:

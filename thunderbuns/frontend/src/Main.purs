@@ -2,47 +2,54 @@ module Main where
 
 import Prelude
 
-import Bonsai (BONSAI, Cmd, debugProgram, emitMessage, emittingTask, noDebug)
+import Bonsai (BONSAI, Cmd(..), debugProgram, emitMessage, emittingTask, fullDebug, noDebug, simpleTask)
 import Bonsai.DOM (DOM, ElementId(..), document, effF, locationHash, window)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
-import Bonsai.Html (VNode, div_, li, mapMarkup, render, text, ul, (!))
-import Bonsai.Html.Attributes (cls, id_)
+import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!), (#!))
+import Bonsai.Html.Attributes (cls, id_, href, style, target, typ, value)
+import Bonsai.Html.Events (onClick, onClickPreventDefault, onInput, onKeyEnter)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.State (State, runState, get)
 import Control.Plus (empty)
-import Data.Foldable (for_)
+import Data.Array (head)
+import Data.Foldable (for_, elem)
 import Data.Lens (assign, modifying, set, use, view)
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Tuple (Tuple)
 import Network.HTTP.Affjax (AJAX)
-import Thunderbuns.WebAPI (getChannel, postAuth)
-import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
+import Thunderbuns.WebAPI (getChannel, getChannelByChannel, postAuth, putChannelByChannel)
+import Thunderbuns.WebAPI.Types (_Channel, Channel(..), Token(..), UserPass(..))
+import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.Forms.Login (loginForm)
-import Thunderfront.Types (class HasInputModel, class HasChannelList, class HasJwtToken, class HasLoginFormModel, Model, Msg(..), channels, channelList, channelName, emptyModel, inputModel, jwtToken, loginFormModel)
-import Thunderfront.Utils (runAjax)
+import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, emptyModel, inputModel, jwtToken, loginFormModel, messages)
+import Thunderfront.Utils (runAjax, runAjaxTask)
 
 update
   :: forall eff
   .  Msg
   -> Model
   -> Tuple (Cmd (ajax::AJAX,dom::DOM|eff) Msg) Model
-update (JwtTokenMsg msg) = runState $ updateJwtToken msg
-update (LoginFormMsg msg) = runState $ updateLoginForm msg
-update (InputFormMsg msg) = runState $ updateInputForm msg
-update (ChannelListMsg msg) = runState $ updateChannelList msg
+update (JwtTokenMsg x) = runState $ updateJwtToken x
+update (LoginFormMsg x) = runState $ updateLoginForm x
+update (MessageInputMsg x) = runState $ updateInputForm x
+update (ChannelListMsg x) = runState $ updateChannelList x
+update (ActiveChannelMsg x) = runState $ updateActiveChannel x
+update (MessageMsg x) = runState $ updateMessages x
+update (NewMessageMsg x) = runState $ addMessage x
+update (CurrentViewMsg x) = runState $ assign currentView x *> pure empty
 
 updateJwtToken
-  :: forall eff m. HasJwtToken m
-  => Maybe String -> State m (Cmd (|eff) Msg)
+  :: forall eff
+  .  Maybe String -> State Model (Cmd (|eff) Msg)
 updateJwtToken jwt = do
   assign jwtToken jwt
   pure empty
 
 updateLoginForm
-  :: forall eff m. HasLoginFormModel m => HasJwtToken m
-  => FormMsg -> State m (Cmd (ajax::AJAX|eff) Msg)
+  :: forall eff
+  .  FormMsg -> State Model (Cmd (ajax::AJAX|eff) Msg)
 updateLoginForm FormOK = do
   -- XXX: it's required -- type safe helpers for form lib?
   u <- (fromMaybe "" <<< lookup "login_username") <$> use loginFormModel
@@ -61,17 +68,47 @@ updateLoginForm msg = do
   pure empty
 
 
-updateChannelList :: forall eff m. HasJwtToken m => HasChannelList m
-  => Array Channel -> State m (Cmd (|eff) Msg)
+updateChannelList
+  :: forall eff
+  .  Array Channel -> State Model (Cmd (|eff) Msg)
 updateChannelList cs = do
   assign (channelList <<< channels) cs
+  c <- use (channelList <<< activeChannel)
+  pure $ pure $ ActiveChannelMsg (fromMaybe c $ head cs)
+
+updateActiveChannel
+  :: forall eff
+  .  Channel -> State Model (Cmd (ajax::AJAX|eff) Msg)
+updateActiveChannel c = do
+  assign (channelList <<< activeChannel) c
+  s <- get
+  map (map MessageMsg) (runAjaxTask (getChannelByChannel (view channelName c)) s)
+
+
+updateMessages
+  :: forall eff
+  .  Array WT.Msg -> State Model (Cmd (|eff) Msg)
+updateMessages ms = do
+  assign (channelModel <<< messages) ms
   pure empty
 
+addMessage :: forall eff. String -> State Model (Cmd (ajax::AJAX|eff) Msg)
+addMessage str = do
+  c <- use (channelList <<< activeChannel)
+  let cn = view channelName c
+  s <- get
+  pure $ emittingTask $ \ctx -> do
+    -- yes, reqBody -> channel
+    runAjax (putChannelByChannel (WT.NewMsg { msg: str} ) cn) s
+    emitMessage ctx $ ActiveChannelMsg c
+    emitMessage ctx $ MessageInputMsg ""
+
+
 updateInputForm
-  :: forall eff m. HasInputModel m
-  => FormMsg -> State m (Cmd (|eff) Msg)
-updateInputForm msg = do
-  modifying inputModel (updatePlain msg)
+  :: forall eff
+  .  String -> State Model (Cmd (|eff) Msg)
+updateInputForm s = do
+  assign inputModel s
   pure empty
 
 
@@ -79,22 +116,63 @@ viewMain :: Model -> VNode Msg
 viewMain model = do
   render $
     div_ ! id_ "bonsai-main" ! cls "pure-g" $
-      div_ ! cls "pure-u-1" $
-        case (view jwtToken model) of
-          Nothing ->
-            mapMarkup LoginFormMsg $ loginForm model
-          Just tk ->
-            div_ $ ul $ do
-              for_ (view (channelList <<< channels) model) $ \c -> do
-                li $ text (view channelName c)
+      case (view jwtToken model) of
+        Nothing ->
+          div_ ! cls "pure-u-1 l-box" #! style "margin-left" "2em"
+          $ mapMarkup LoginFormMsg $ loginForm model
+        Just tk -> do
+          viewMenu model
+          viewContent model
 
+viewMenu ::  Model -> Markup Msg
+viewMenu model = do
+  nav ! cls "l-box pure-u-1 pure-menu pure-menu-horizontal pure-menu-scrollable" $ do
+    span ! cls "pure-menu-heading" $ text "Thunderbuns"
+    ul ! cls "pure-menu-list" $ do
+      item ChannelView "Channels"
+      item DebugView "Debug"
+      item' "pure-menu-item" (JwtTokenMsg Nothing) "Logout"
+  where
+    item current str =
+      item' (menuItemClasses current) (CurrentViewMsg current) str
+    item' klass msg str =
+      li ! cls klass $
+        a ! cls "pure-menu-link" ! href "#"
+          ! onClickPreventDefault msg
+          $ text str
+    menuItemClasses current =
+      if current == (view currentView model)
+          then "pure-menu-item pure-menu-item-selected"
+          else "pure-menu-item"
+
+viewContent :: Model -> Markup Msg
+viewContent model =
+  case (view currentView model) of
+    ChannelView -> viewChannels model
+    DebugView -> viewDebug model
+
+viewChannels :: Model -> Markup Msg
+viewChannels model = do
+  div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-md-u-5-6" $ do
+    ul $ for_ (view (channelModel <<< messages) model) $ \(WT.Msg {msg})  ->
+      li $ text msg
+    div_ $ input ! typ "text" ! value (view inputModel model)
+      ! onInput MessageInputMsg ! onKeyEnter NewMessageMsg
+  div_ ! cls "l-box pure-u-1-3 pure-md-u-1-6" $ do
+    ul ! cls "l-plainlist" $
+    for_ (view (channelList <<< channels) model) $ \c -> do
+      li $ text (view channelName c)
+
+viewDebug :: Model -> Markup Msg
+viewDebug model = do
+  div_ ! cls "l-box" #! style "margin-left" "2em" $ do
+    div_ $ text "DEBUG PANE"
 
 main :: Eff (bonsai::BONSAI, dom::DOM, exception::EXCEPTION) Unit
 main = do
   hash <- effF $ window >>= document >>= locationHash
   _ <- dbgProgram (ElementId "main") update viewMain emptyModel window
   pure unit
-
   where
     dbgProgram =
       debugProgram (noDebug

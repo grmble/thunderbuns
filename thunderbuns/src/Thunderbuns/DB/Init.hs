@@ -26,14 +26,13 @@ initDB' = do
           "  primary key (channel))"
         , "create table if not exists msg (" <>
           "  channel text, " <>
-          "  pdate date, " <>
-          "  id timeuuid, " <>
+          "  created timeuuid, " <>
           "  user text, " <>
           "  msg text, " <>
-          "  primary key (channel, id)) " <>
+          "  primary key (channel, created)) " <>
           "with comment = 'partition key: channel/date combo.  query by channel and data/time_uuid' and " <>
           "  compaction = {'class': 'DateTieredCompactionStrategy'} and " <>
-          "  clustering order by (id DESC)"
+          "  clustering order by (created DESC)"
           -- "compaction = { 'class': 'TimeWindowCompactionStrategy', 'compaction_window_unit': hours, 'compation_window_size': 1 }
         ]
   for_ cql $ \c -> do

@@ -53,6 +53,7 @@ dependencies:
 - transformers
 - unliftio
 - unordered-containers
+- uuid
 - wai
 - wai-app-static
 - wai-middleware-prometheus

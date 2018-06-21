@@ -7,10 +7,10 @@ import Crypto.Error (eitherCryptoError)
 import Crypto.KDF.Argon2
 import qualified Crypto.Random as Random
 import qualified Data.Aeson as A
+import Data.Bifunctor (first)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as BL
-import Data.Bifunctor (first)
 import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -22,6 +22,7 @@ import Thunderbuns.Auth.Types
 import Thunderbuns.Config
 import Thunderbuns.Config.DB
 import Thunderbuns.Config.Jwt
+import Thunderbuns.DB.Internal (runDB)
 import Thunderbuns.Exception
 import Thunderbuns.Logging
 import Thunderbuns.Validate
@@ -72,7 +73,8 @@ authenticate up = do
     Right h' ->
       if h == h'
         then getPOSIXTime >>= newJwtToken (user (unV up))
-        else logError "password did not match stored hash" *> throwError authenticationFailed
+        else logError "password did not match stored hash" *>
+             throwError authenticationFailed
 
 argonOpts :: PasswdOptions -> Options
 argonOpts (Argon2Options i m p) =
@@ -137,7 +139,10 @@ decodeToken tk = do
   logDebug ("decodeToken: s=" <> TE.decodeUtf8 s)
   -- a changed secret will cause the hmacDecode to fail (message: bad signature)
   (_, bs) <- liftEither $ first (const authorizationDenied) $ hmacDecode s tk
-  c <- liftEither $ first (\e -> internalError ("json decode: " ++ e)) $ A.eitherDecodeStrict' bs
+  c <-
+    liftEither $
+    first (\e -> internalError ("json decode: " ++ e)) $
+    A.eitherDecodeStrict' bs
   et <- maybeError (internalError "no expiration in token") (jwtExp c)
   if et < IntDate t
     then logError "token expired" *> throwError authorizationDenied
@@ -153,27 +158,25 @@ newClaims u t = do
   let ex = t + realToFrac dt
   pure $ emptyClaims {jwtSub = Just u, jwtExp = Just (IntDate ex)}
 
-instance HasDbConnection r => MonadAuthDb (ReaderT r (ExceptT ThunderbunsException IO)) where
-  upsertPasswd n o s h = ask >>= dbConnection >>= liftIO . runConnection' go
-    where
-      go =
-        execute
-          Quorum
-          "insert into tb.passwd (username, config, salt, hash) values (?, ?, ?, ?)"
-          [ TextValue n
-          , BlobValue (BL.toStrict $ A.encode o)
-          , BlobValue s
-          , BlobValue h
-          ]
-  selectPasswd n = ask >>= dbConnection >>= liftIO . runConnection' go
-    where
-      go = do
-        let cql =
-              "select config, salt, hash from tb.passwd where username=?"
-        rows <- executeQuery Quorum cql [TextValue n]
-        (mo, s, h) <-
-          extractSingleRow ((,,) <$> extract <*> extract <*> extract) rows
-        case A.decode (BL.fromStrict mo) of
-          Nothing -> throwError $ messageException "error argon2 opts"
-          Just o -> pure (o, s, h)
+instance HasDbConnection r =>
+         MonadAuthDb (ReaderT r (ExceptT ThunderbunsException IO)) where
+  upsertPasswd n o s h =
+    runDB $
+    execute
+      Quorum
+      "insert into tb.passwd (username, config, salt, hash) values (?, ?, ?, ?)"
+      [ TextValue n
+      , BlobValue (BL.toStrict $ A.encode o)
+      , BlobValue s
+      , BlobValue h
+      ]
+  selectPasswd n =
+    runDB $ do
+      let cql = "select config, salt, hash from tb.passwd where username=?"
+      rows <- executeQuery Quorum cql [TextValue n]
+      (mo, s, h) <-
+        extractSingleRow ((,,) <$> extract <*> extract <*> extract) rows
+      case A.decode (BL.fromStrict mo) of
+        Nothing -> throwError $ messageException "error argon2 opts"
+        Just o -> pure (o, s, h)
   getRandomBytes n = liftIO $ Random.getRandomBytes n

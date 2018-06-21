@@ -39,6 +39,8 @@ module Thunderbuns.Validate
   , symbolValidator
   , symbolValidator'
   , textValidator
+  , uuidValidator
+  , singleLineValidator
   , appmsg
   ) where
 
@@ -50,6 +52,7 @@ import qualified Data.List as L
 import qualified Data.Text as T
 import Thunderbuns.Exception
 import UnliftIO.Exception (throwIO)
+import Data.UUID (fromText)
 
 -- | A newtype for a validated value.
 newtype V a =
@@ -182,6 +185,20 @@ textValidator str a = parsingValidator (fst <$> match textParser) str stripped
       _ <- charParser
       _ <- greedyParser
       endOfInput <?> msg
+
+singleLineValidator :: Validator T.Text
+singleLineValidator str a = parsingValidator (fst <$> match singleLineParser) str stripped
+  where
+    stripped = T.dropAround (== toEnum 0x20) a
+    msg = "no characters in the ascii control range"
+    singleLineParser = Data.Attoparsec.Text.takeWhile (toEnum 0x20 <=) <?> msg
+
+-- | UUID Validator - must be valid UUID
+uuidValidator :: Validator T.Text
+uuidValidator str a =
+  maybe (mkFailure str ("not a valid uuid: " ++ T.unpack a))
+        (const $ pure a)
+        (fromText a)
 
 -- | Combine validator messages
 appmsg :: Maybe String -> String -> Maybe String

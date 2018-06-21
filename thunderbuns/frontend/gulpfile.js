@@ -1,4 +1,5 @@
 var gulp = require("gulp");
+var watch = require("gulp-watch");
 var purescript = require("gulp-purescript");
 var run = require("gulp-run");
 var del = require("del");
@@ -9,11 +10,17 @@ var sources = [
   "bower_components/purescript-*/src/**/*.purs",
 ];
 
+var watchSources = [
+  "src/**/*.purs"
+];
+
 var distFiles = [
   "index.html",
   "*.css",
   "output/app.js"
 ];
+
+var staticDir = "../../dist/static";
 
 gulp.task("clean", function() {
   return del([ 'output', 'bower_components', 'node_modules', 'dist' ]);
@@ -51,12 +58,12 @@ gulp.task("test", ["compile"], function() {
 
 gulp.task("copy", ["bundle"], function() {
     return gulp.src(distFiles)
-        .pipe(gulp.dest("../../dist/static"));
+        .pipe(gulp.dest(staticDir));
 });
 
 gulp.task("copy-appjs", ["bundle"], function() {
   return gulp.src("output/app.js")
-    .pipe(gulp.dest("../dist/static"));
+    .pipe(gulp.dest(staticDir));
 });
 
 gulp.task("copyDemoSources", [], function() {
@@ -72,3 +79,8 @@ gulp.task("default", ["bundle", "test", "dist"]);
 
 gulp.task("fast", ["bundle", "copy-appjs"]);
 
+gulp.task("watch", ["fast"], function() {
+  return watch(watchSources, function () {
+    gulp.start("fast");
+  });
+});

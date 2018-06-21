@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d8b6efdd8073e2c70fbbedb098dce8ff95a59f068b143603ecdc239ba1b8c181
+-- hash: c681a216d10f1dcc19a51d6aa025a725e3c71c0b0bda72f59fbeeacf94e616f0
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -63,6 +63,7 @@ library
     , transformers
     , unliftio
     , unordered-containers
+    , uuid
     , wai
     , wai-app-static
     , wai-middleware-prometheus
@@ -133,6 +134,7 @@ executable thunderbuns-exe
     , transformers
     , unliftio
     , unordered-containers
+    , uuid
     , wai
     , wai-app-static
     , wai-middleware-prometheus
@@ -187,6 +189,7 @@ test-suite thunderbuns-test
     , transformers
     , unliftio
     , unordered-containers
+    , uuid
     , wai
     , wai-app-static
     , wai-middleware-prometheus

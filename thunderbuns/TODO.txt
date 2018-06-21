@@ -1,7 +1,10 @@
 (A) simple channel api
 (A) supervise connection +cql4
 (B) replace caek dependency (jsdom-simulant) - security warning for jsdom-simulant +bonsai
+(B) simpleTask arg is most often not needed. simpleTask, domTask, emittingTask ??? +bonsai
+(B) storage api +bonsai
 (C) typesafe form result +forms +frontend
 (D) logging - handle more strings types +backend
 (E) debug mode; collect and replay messages +bonsai
+tests for validators: uuid and single line
 generate show instances for generated purescript types +backend +frontend

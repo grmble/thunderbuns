@@ -1,12 +1,14 @@
 module Thunderbuns.DB.Internal where
 
 import Control.Lens (view)
+import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Streaming.Network
 import qualified Data.Text.Encoding as TE
 import Database.CQL4
 import Thunderbuns.Config
 import Thunderbuns.Config.DB (HasDbConfig, dbConfig, host, port)
+import Thunderbuns.Exception
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (bracket)
 import UnliftIO.STM (atomically, putTMVar)
@@ -20,7 +22,10 @@ withConnection f = do
   let h = TE.encodeUtf8 $ view (dbConfig . host) e
   liftIO $
     runTCPClient (clientSettingsTCP p h) $ \app ->
-      bracket (connection app) (runConnection closeConnection) f
+      bracket
+        -- (connection' hexdumpLogger app)
+        (connection app)
+        (runConnection closeConnection) f
 
 -- | Supervise the global db connection
 --
@@ -40,3 +45,13 @@ superviseConnection = do
     delayForever = do
       threadDelay 1000000
       delayForever
+
+runDB ::
+     ( HasDbConnection r
+     , MonadReader r m
+     , MonadError ThunderbunsException m
+     , MonadIO m
+     )
+  => ConnectionIO a
+  -> m a
+runDB m = ask >>= dbConnection >>= liftIO . runConnection' m

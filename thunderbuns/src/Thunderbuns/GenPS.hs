@@ -16,7 +16,10 @@ import Thunderbuns.Server
 
 myTypes :: [SumType 'Haskell]
 myTypes =
+  -- equal (Proxy :: Proxy Channel) $ mkSumType (Proxy :: Proxy Channel)
   [ mkSumType (Proxy :: Proxy Channel)
+  , mkSumType (Proxy :: Proxy Msg)
+  , mkSumType (Proxy :: Proxy NewMsg)
   , mkSumType (Proxy :: Proxy Priority)
   , mkSumType (Proxy :: Proxy UserPass)
   , mkSumType (Proxy :: Proxy Token)

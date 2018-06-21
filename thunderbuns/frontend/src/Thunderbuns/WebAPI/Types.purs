@@ -27,6 +27,39 @@ _Channel :: Iso' Channel { channelName :: String}
 _Channel = _Newtype
 
 --------------------------------------------------------------------------------
+newtype Msg =
+    Msg {
+      channel :: Channel
+    , pk :: String
+    , user :: String
+    , msg :: String
+    }
+
+derive instance genericMsg :: Generic Msg
+
+derive instance newtypeMsg :: Newtype Msg _
+
+
+--------------------------------------------------------------------------------
+_Msg :: Iso' Msg { channel :: Channel, pk :: String, user :: String, msg :: String}
+_Msg = _Newtype
+
+--------------------------------------------------------------------------------
+newtype NewMsg =
+    NewMsg {
+      msg :: String
+    }
+
+derive instance genericNewMsg :: Generic NewMsg
+
+derive instance newtypeNewMsg :: Newtype NewMsg _
+
+
+--------------------------------------------------------------------------------
+_NewMsg :: Iso' NewMsg { msg :: String}
+_NewMsg = _Newtype
+
+--------------------------------------------------------------------------------
 data Priority =
     FATAL
   | ERROR

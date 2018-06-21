@@ -7,24 +7,28 @@ grid classes
 
 */
 html {
-  box-sizing: border-box;
+    box-sizing: border-box;
 }
 *, *:before, *:after {
-  box-sizing: inherit;
+    box-sizing: inherit;
 }
 
 
-/* source display should span whole window height */
+/* channel content display should span whole window height */
 html, body, #main, #bonsai-main {
-  min-height: 100%;
+    min-height: 100%;
 }
 
-#source {
-  min-height: 100%;
-  color: #eee;
-  background-color: #333;
+#content {
+    min-height: 100%;
 }
 
 .l-box {
-  padding: 1em;
+    padding: 1em;
+}
+
+.l-plainlist {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
 }

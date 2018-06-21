@@ -14,6 +14,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Thunderbuns.WebAPI.Types (Channel(..), _Channel)
+import Thunderbuns.WebAPI.Types as WT
 
 -- | Main application model
 -- |
@@ -33,6 +34,7 @@ newtype Model =
   , channelList :: ChannelList
   , channelModel :: ChannelModel
   , formModels :: FormModels
+  , currentView :: CurrentView
   }
 
 emptyModel :: Model
@@ -41,32 +43,30 @@ emptyModel =
         , channelList: ChannelList { activeChannel: (Channel { channelName: "default" })
                                    , channels: [Channel { channelName: "" } ]}
         , channelModel: ChannelModel { messages: []}
-        , formModels: FormModels { inputModel: emptyFormModel
-                                 , loginFormModel: emptyFormModel}}
+        , formModels: FormModels { inputModel: ""
+                                 , loginFormModel: emptyFormModel}
+        , currentView: ChannelView }
 
 derive instance newtypeModel :: Newtype Model _
 derive instance genericModel :: Generic Model _
-instance showModel :: Show Model where
-  show = genericShow
+-- instance showModel :: Show Model where
+--   show = genericShow
 
 
-jwtToken' :: Lens' Model (Maybe String)
-jwtToken' = _Newtype <<< prop (SProxy :: SProxy "jwtToken")
+jwtToken :: Lens' Model (Maybe String)
+jwtToken = _Newtype <<< prop (SProxy :: SProxy "jwtToken")
 
-channelList' :: Lens' Model ChannelList
-channelList' = _Newtype <<< prop (SProxy :: SProxy "channelList")
+channelList :: Lens' Model ChannelList
+channelList = _Newtype <<< prop (SProxy :: SProxy "channelList")
 
-channelModel' :: Lens' Model ChannelModel
-channelModel' = _Newtype <<< prop (SProxy :: SProxy "channelModel")
+channelModel :: Lens' Model ChannelModel
+channelModel = _Newtype <<< prop (SProxy :: SProxy "channelModel")
 
 formModels :: Lens' Model FormModels
 formModels = _Newtype <<< prop (SProxy :: SProxy "formModels")
 
-class HasJwtToken a where
-  jwtToken :: Lens' a (Maybe String)
-instance jwtTokenModel :: HasJwtToken Model where
-  jwtToken = jwtToken'
-
+currentView :: Lens' Model CurrentView
+currentView = _Newtype <<< prop (SProxy :: SProxy "currentView")
 
 -- | Channel list
 -- |
@@ -92,35 +92,21 @@ activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
 channels :: Lens' ChannelList (Array Channel)
 channels = _Newtype <<< prop (SProxy :: SProxy "channels")
 
-class HasChannelList a where
-  channelList :: Lens' a ChannelList
-instance channelListHasChannelList :: HasChannelList ChannelList where
-  channelList = id
-instance modelHasChannelList :: HasChannelList Model where
-  channelList = channelList'
-
 -- | Channel Model
 -- |
 -- | Models the active channel where the messages are shown
 newtype ChannelModel =
   ChannelModel
-  { messages :: Array String
+  { messages :: Array WT.Msg
   }
 
 derive instance newtypeChannelModel :: Newtype ChannelModel _
 derive instance genericChannelModel :: Generic ChannelModel _
-instance showChannelModel :: Show ChannelModel where
-  show = genericShow
+-- instance showChannelModel :: Show ChannelModel where
+--  show = map (show <<< viewgenericShow
 
-messages :: Lens' ChannelModel (Array String)
+messages :: Lens' ChannelModel (Array WT.Msg)
 messages = _Newtype <<< prop (SProxy :: SProxy "messages")
-
-class HasChannelModel a where
-  channelModel :: Lens' a ChannelModel
-instance channelModelHasChannelModel :: HasChannelModel ChannelModel where
-  channelModel = id
-instance modelHasChannelModel :: HasChannelModel Model where
-  channelModel = channelModel'
 
 -- | Form models for the unique forms
 -- |
@@ -128,7 +114,7 @@ instance modelHasChannelModel :: HasChannelModel Model where
 -- | * loginFormModel: model for the login form
 newtype FormModels =
   FormModels
-  { inputModel :: FormModel
+  { inputModel :: String
   , loginFormModel :: FormModel
   }
 
@@ -137,7 +123,7 @@ derive instance genericFormModels :: Generic FormModels _
 instance showFormModels :: Show FormModels where
   show = genericShow
 
-inputModel' :: Lens' FormModels FormModel
+inputModel' :: Lens' FormModels String
 inputModel' = _Newtype <<< prop (SProxy :: SProxy "inputModel")
 
 loginFormModel' :: Lens' FormModels FormModel
@@ -151,22 +137,35 @@ instance modelLoginFormModel :: HasLoginFormModel Model where
   loginFormModel = formModels <<< loginFormModel'
 
 class HasInputModel a where
-  inputModel :: Lens' a FormModel
+  inputModel :: Lens' a String
 instance formModelsHasInputModel :: HasInputModel FormModels where
   inputModel = inputModel'
 instance modelHasInputModel :: HasInputModel Model where
   inputModel = formModels <<< inputModel'
 
 
+-- ! currently active menu
+data CurrentView
+  = ChannelView
+  | DebugView
+
+derive instance genericCurrentView :: Generic CurrentView _
+derive instance eqCurrentView :: Eq CurrentView
+instance showCurrentView :: Show CurrentView where
+  show = genericShow
+
 
 -- | Messages
 data Msg
   = JwtTokenMsg (Maybe String)
-  | InputFormMsg FormMsg
+  | MessageInputMsg String
   | LoginFormMsg FormMsg
   | ChannelListMsg (Array Channel)
+  | ActiveChannelMsg Channel
+  | MessageMsg (Array WT.Msg)
+  | NewMessageMsg String
+  | CurrentViewMsg CurrentView
 
 derive instance genericMsg :: Generic Msg _
--- XXX FormModel show instance
 -- instance showMsg :: Show Msg where
---   show = genericShow
+--  show = genericShow

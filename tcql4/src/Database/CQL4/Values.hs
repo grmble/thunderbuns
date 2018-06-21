@@ -141,6 +141,7 @@ instance HasFromValue B.ByteString where
 
 instance HasFromValue U.UUID where
   fromValue (UUIDValue uu) = Right uu
+  fromValue (TimeUUIDValue tu) = Right tu
   fromValue x = Left $ fromValueException "UUID" x
 
 instance HasFromValue Day where

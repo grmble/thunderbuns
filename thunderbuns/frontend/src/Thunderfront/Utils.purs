@@ -16,15 +16,15 @@ import Network.HTTP.Affjax (AJAX)
 import Servant.PureScript.Affjax (AjaxError, errorToString)
 import Servant.PureScript.Settings (SPSettings_, defaultSettings)
 import Thunderbuns.WebAPI (SPParams_(..))
-import Thunderfront.Types (class HasJwtToken, jwtToken)
+import Thunderfront.Types (Model, jwtToken)
 
 -- | Translate errors and carry authorization header
 --
 -- Generated API code uses a (MonadError AjaxError)
 runAjax
-  :: forall eff r a. HasJwtToken r
-  => ReaderT (SPSettings_ SPParams_) (ExceptT AjaxError (Aff (ajax::AJAX|eff))) a
-  -> r
+  :: forall eff a
+  .  ReaderT (SPSettings_ SPParams_) (ExceptT AjaxError (Aff (ajax::AJAX|eff))) a
+  -> Model
   -> Aff (ajax::AJAX|eff) a
 runAjax m r = do
   x <- runExceptT $ runReaderT m (spSettings r)
@@ -34,14 +34,14 @@ runAjax m r = do
 
 -- | Run ajax as a simple task
 runAjaxTask
-  :: forall eff r a. HasJwtToken r
-  => ReaderT (SPSettings_ SPParams_) (ExceptT AjaxError (Aff (ajax::AJAX|eff))) a
-  -> r
-  -> State r (Cmd (ajax::AJAX|eff) a)
+  :: forall eff a
+  .  ReaderT (SPSettings_ SPParams_) (ExceptT AjaxError (Aff (ajax::AJAX|eff))) a
+  -> Model
+  -> State Model (Cmd (ajax::AJAX|eff) a)
 runAjaxTask m r = pure $ simpleTask $ const $ runAjax m r
 
 
-spSettings :: forall r. HasJwtToken r => r -> SPSettings_ SPParams_
+spSettings :: Model -> SPSettings_ SPParams_
 spSettings r =
   let jwt = view jwtToken r
       auth = "Bearer " <> fromMaybe "" jwt
