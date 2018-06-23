@@ -40,7 +40,7 @@ newtype Model =
 emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
-        , channelList: ChannelList { activeChannel: (Channel { channelName: "default" })
+        , channelList: ChannelList { activeChannel: (Channel { channelName: "Default" })
                                    , channels: [Channel { channelName: "" } ]}
         , channelModel: ChannelModel { messages: []}
         , formModels: FormModels { inputModel: ""

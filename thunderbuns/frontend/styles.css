@@ -15,20 +15,39 @@ html {
 
 
 /* channel content display should span whole window height */
-html, body, #main, #bonsai-main {
+html, body, #main, #bonsai-main  {
     min-height: 100%;
+    height: 100%;
 }
 
 #content {
-    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    /* XXX it's better than anything else i've come up with */
+    height: 90%;
+}
+
+.l-stretch {
+    flex: 1 1 auto;
+    overflow: scroll;
 }
 
 .l-box {
     padding: 1em;
 }
 
+.lr-box {
+    padding: 0 1em;
+}
+
 .l-plainlist {
     list-style-type: none;
     margin: 0;
     padding: 0;
+}
+
+.l-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }

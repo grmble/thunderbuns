@@ -2,7 +2,11 @@
 
 Chat server "vaporware"
 
-It's really an excuse to play around with various technologies
+Current status: technological playground
+
+* tlogger: structured logger ala node's bunyan
+* tcql4: cql version 4 driver for cassandra/scylla
+
 
 ## infrastructure
 
@@ -26,7 +30,6 @@ It's really an excuse to play around with various technologies
 ## haskell libraries
 
 * dhall for configuration
-* cql-io to access scylladb
 * file-embed to embed files/directories
 * jose-jwt for JWT
 * servant for implementation of the web api.
@@ -35,6 +38,7 @@ It's really an excuse to play around with various technologies
 * ipfs ??? global shared filesystem ?
 * purescript bindings via https://github.com/eskimor/servant-purescript
 * argon2/bcrypt etc via cryptonite
+* stm-chan for TBChan
 
 
 ## inspiration

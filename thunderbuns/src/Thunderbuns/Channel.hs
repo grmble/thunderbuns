@@ -43,7 +43,7 @@ instance HasDbConnection r =>
       [TextValue (channelName (unV c))]
   messages c =
     runDB $ do
-      let cql = "select created, user, msg from tb.msg where channel=? limit 20"
+      let cql = "select created, user, msg from tb.msg where channel=? limit 25"
       rows <- executeQuery Quorum cql [TextValue (channelName (unV c))]
       for
         (reverse rows)

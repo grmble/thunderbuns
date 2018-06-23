@@ -74,6 +74,7 @@ updateChannelList
 updateChannelList cs = do
   assign (channelList <<< channels) cs
   c <- use (channelList <<< activeChannel)
+  -- XXX eq classes!
   pure $ pure $ ActiveChannelMsg (fromMaybe c $ head cs)
 
 updateActiveChannel
@@ -118,15 +119,20 @@ viewMain model = do
     div_ ! id_ "bonsai-main" ! cls "pure-g" $
       case (view jwtToken model) of
         Nothing ->
-          div_ ! cls "pure-u-1 l-box" #! style "margin-left" "2em"
-          $ mapMarkup LoginFormMsg $ loginForm model
+          viewLoginForm model
         Just tk -> do
           viewMenu model
-          viewContent model
+          viewCurrentView model
+
+viewLoginForm :: Model -> Markup Msg
+viewLoginForm model =
+  div_ ! cls "pure-u-1 l-box"
+    -- #! style "margin-left" "2em"
+    $ mapMarkup LoginFormMsg $ loginForm model
 
 viewMenu ::  Model -> Markup Msg
 viewMenu model = do
-  nav ! cls "l-box pure-u-1 pure-menu pure-menu-horizontal pure-menu-scrollable" $ do
+  nav ! id_ "menu" ! cls "l-box pure-u-1 pure-menu pure-menu-horizontal pure-menu-scrollable" $ do
     span ! cls "pure-menu-heading" $ text "Thunderbuns"
     ul ! cls "pure-menu-list" $ do
       item ChannelView "Channels"
@@ -145,27 +151,44 @@ viewMenu model = do
           then "pure-menu-item pure-menu-item-selected"
           else "pure-menu-item"
 
-viewContent :: Model -> Markup Msg
-viewContent model =
+viewCurrentView :: Model -> Markup Msg
+viewCurrentView model =
   case (view currentView model) of
-    ChannelView -> viewChannels model
+    ChannelView -> do
+      viewChannels model
+      viewActiveChannel model
     DebugView -> viewDebug model
 
 viewChannels :: Model -> Markup Msg
 viewChannels model = do
-  div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-md-u-5-6" $ do
-    ul $ for_ (view (channelModel <<< messages) model) $ \(WT.Msg {msg})  ->
-      li $ text msg
-    div_ $ input ! typ "text" ! value (view inputModel model)
-      ! onInput MessageInputMsg ! onKeyEnter NewMessageMsg
-  div_ ! cls "l-box pure-u-1-3 pure-md-u-1-6" $ do
+  div_ ! id_ "channels" ! cls "l-box pure-u-1-3 pure-u-md-1-6 pure-menu" $ do
+    span ! cls "pure-menu-heading" $ text "Channels"
     ul ! cls "l-plainlist" $
     for_ (view (channelList <<< channels) model) $ \c -> do
-      li $ text (view channelName c)
+      li ! cls (menuItemClasses c) $
+        a ! cls "pure-menu-link" ! href "#"
+          ! onClickPreventDefault (ActiveChannelMsg c)
+          $ text (view channelName c)
+  where
+    -- XXX eq classes generated! unify with viewMenu
+    menuItemClasses current =
+      if (view channelName current) == (view (channelList <<< activeChannel <<< channelName) model)
+          then "pure-menu-item pure-menu-item-selected"
+          else "pure-menu-item"
+
+viewActiveChannel :: Model -> Markup Msg
+viewActiveChannel model =
+  div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-u-md-5-6" $ do
+    ul ! cls "l-plainlist l-stretch" $
+      for_ (view (channelModel <<< messages) model) $ \(WT.Msg {msg})  ->
+        li $ text msg
+    div_ ! cls "pure-form" $
+      input ! cls "pure-u-1 pure-input" ! typ "text" ! value (view inputModel model)
+        ! onInput MessageInputMsg ! onKeyEnter NewMessageMsg
 
 viewDebug :: Model -> Markup Msg
 viewDebug model = do
-  div_ ! cls "l-box" #! style "margin-left" "2em" $ do
+  div_ ! cls "l-box pure-u-1" $ do
     div_ $ text "DEBUG PANE"
 
 main :: Eff (bonsai::BONSAI, dom::DOM, exception::EXCEPTION) Unit

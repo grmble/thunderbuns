@@ -1,10 +1,13 @@
-(A) simple channel api
-(A) supervise connection +cql4
+(A) event system, server side events via polyfill
+(A) loading of earlier messages when scrolling to top
+(A) scroll down on channel switch, focus input element after logging in/switching to channel view
 (B) replace caek dependency (jsdom-simulant) - security warning for jsdom-simulant +bonsai
 (B) simpleTask arg is most often not needed. simpleTask, domTask, emittingTask ??? +bonsai
 (B) storage api +bonsai
+(B) supervise connection +cql4
+(C) logging - support request id (req_id) +tlogger
 (C) typesafe form result +forms +frontend
-(D) logging - handle more strings types +backend
+(D) +tlogger - handle more strings types +backend
 (E) debug mode; collect and replay messages +bonsai
-tests for validators: uuid and single line
 generate show instances for generated purescript types +backend +frontend
+tests for validators: uuid and single line
