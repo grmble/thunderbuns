@@ -1,3 +1,6 @@
+(A) +purs_0_12 encode url path parameters
+(A) +purs_0_12 only generate WebAPI.Types, append additional instances after purescript-bridge
+(A) gulp 4.0
 (A) event system, server side events via polyfill
 (A) loading of earlier messages when scrolling to top
 (A) scroll down on channel switch, focus input element after logging in/switching to channel view

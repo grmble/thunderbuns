@@ -37,6 +37,11 @@ newtype Model =
   , currentView :: CurrentView
   }
 
+derive instance newtypeModel :: Newtype Model _
+derive instance genericModel :: Generic Model _
+-- instance showModel :: Show Model where
+--   show = genericShow
+
 emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
@@ -46,11 +51,6 @@ emptyModel =
         , formModels: FormModels { inputModel: ""
                                  , loginFormModel: emptyFormModel}
         , currentView: ChannelView }
-
-derive instance newtypeModel :: Newtype Model _
-derive instance genericModel :: Generic Model _
--- instance showModel :: Show Model where
---   show = genericShow
 
 
 jwtToken :: Lens' Model (Maybe String)

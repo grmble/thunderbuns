@@ -7,17 +7,12 @@
     "output"
   ],
   "dependencies": {
-    "purescript-prelude": "^3.3.0",
-    "purescript-console": "^3.0.0",
-    "purescript-bonsai": "grmble/purescript-bonsai#master",
-    "purescript-bonsai-html": "grmble/purescript-bonsai-html#master",
-    "purescript-bonsai-forms": "grmble/purescript-bonsai-forms#master",
-    "purescript-affjax": "^5.0.0",
-    "purescript-servant-support": "^9.0.1",
-    "purescript-profunctor-lenses": "^3.8.0",
-    "purescript-maps": "^3.6.0"
+    "purescript-bonsai-forms": "grmble/purescript-bonsai-forms#purs_0_12",
+    "purescript-affjax": "^6.0.0",
+    "purescript-profunctor-lenses": "^4.0.0",
+    "purescript-foreign-generic": "^7.0.0"
   },
   "devDependencies": {
-    "purescript-psci-support": "^3.0.0"
+    "purescript-psci-support": "^4.0.0"
   }
 }

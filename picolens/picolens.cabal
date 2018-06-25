@@ -1,8 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+-- This file has been generated from package.yaml by hpack version 0.28.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ed52123d4ef3632d42ceba2d553bb21f2a3d46500050576cf02e40f1f44c4b89
+-- hash: f21d8f878ed8107056f4159bea9e30fb26e5039f68e3ccb9e4e0d22532200f74
 
 name:           picolens
 version:        0.1.0.0
@@ -16,7 +16,6 @@ license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
-
 extra-source-files:
     README.md
 

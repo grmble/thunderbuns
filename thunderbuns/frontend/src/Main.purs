@@ -2,14 +2,14 @@ module Main where
 
 import Prelude
 
-import Bonsai (BONSAI, Cmd(..), debugProgram, emitMessage, emittingTask, fullDebug, noDebug, simpleTask)
-import Bonsai.DOM (DOM, ElementId(..), document, effF, locationHash, window)
+import Bonsai (Cmd(..), debugProgram, emitMessage, emittingTask, fullDebug, noDebug, simpleTask)
+import Bonsai.DOM (ElementId(..), document, effF, locationHash, window)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
 import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!), (#!))
 import Bonsai.Html.Attributes (cls, id_, href, style, target, typ, value)
 import Bonsai.Html.Events (onClick, onClickPreventDefault, onInput, onKeyEnter)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Exception (EXCEPTION)
+import Effect (Effect)
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.State (State, runState, get)
 import Control.Plus (empty)
 import Data.Array (head)
@@ -18,19 +18,13 @@ import Data.Lens (assign, modifying, set, use, view)
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Tuple (Tuple)
-import Network.HTTP.Affjax (AJAX)
 import Thunderbuns.WebAPI (getChannel, getChannelByChannel, postAuth, putChannelByChannel)
 import Thunderbuns.WebAPI.Types (_Channel, Channel(..), Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.Forms.Login (loginForm)
 import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, emptyModel, inputModel, jwtToken, loginFormModel, messages)
-import Thunderfront.Utils (runAjax, runAjaxTask)
 
-update
-  :: forall eff
-  .  Msg
-  -> Model
-  -> Tuple (Cmd (ajax::AJAX,dom::DOM|eff) Msg) Model
+update :: Msg -> Model -> Tuple (Cmd Msg) Model
 update (JwtTokenMsg x) = runState $ updateJwtToken x
 update (LoginFormMsg x) = runState $ updateLoginForm x
 update (MessageInputMsg x) = runState $ updateInputForm x
@@ -40,16 +34,12 @@ update (MessageMsg x) = runState $ updateMessages x
 update (NewMessageMsg x) = runState $ addMessage x
 update (CurrentViewMsg x) = runState $ assign currentView x *> pure empty
 
-updateJwtToken
-  :: forall eff
-  .  Maybe String -> State Model (Cmd (|eff) Msg)
+updateJwtToken :: Maybe String -> State Model (Cmd Msg)
 updateJwtToken jwt = do
   assign jwtToken jwt
   pure empty
 
-updateLoginForm
-  :: forall eff
-  .  FormMsg -> State Model (Cmd (ajax::AJAX|eff) Msg)
+updateLoginForm :: FormMsg -> State Model (Cmd Msg)
 updateLoginForm FormOK = do
   -- XXX: it's required -- type safe helpers for form lib?
   u <- (fromMaybe "" <<< lookup "login_username") <$> use loginFormModel
@@ -58,56 +48,50 @@ updateLoginForm FormOK = do
   modifying loginFormModel (M.delete "password")
   model <- get
   pure $ emittingTask $ \ctx -> do
-    Token {token} <- runAjax (postAuth (UserPass {user: u, pass:p})) model
+    Token {token} <- runReaderT (postAuth (UserPass {user: u, pass:p})) model
     emitMessage ctx (JwtTokenMsg $ Just token)
     let model' = set jwtToken (Just token) model
-    cs <- runAjax getChannel model'
+    cs <- runReaderT getChannel model'
     emitMessage ctx (ChannelListMsg cs)
 updateLoginForm msg = do
   modifying loginFormModel (updatePlain msg)
   pure empty
 
 
-updateChannelList
-  :: forall eff
-  .  Array Channel -> State Model (Cmd (|eff) Msg)
+updateChannelList :: Array Channel -> State Model (Cmd Msg)
 updateChannelList cs = do
   assign (channelList <<< channels) cs
   c <- use (channelList <<< activeChannel)
   -- XXX eq classes!
   pure $ pure $ ActiveChannelMsg (fromMaybe c $ head cs)
 
-updateActiveChannel
-  :: forall eff
-  .  Channel -> State Model (Cmd (ajax::AJAX|eff) Msg)
+updateActiveChannel :: Channel -> State Model (Cmd Msg)
 updateActiveChannel c = do
   assign (channelList <<< activeChannel) c
   s <- get
-  map (map MessageMsg) (runAjaxTask (getChannelByChannel (view channelName c)) s)
+  pure $ simpleTask $ \_ -> do
+    cs <- runReaderT (getChannelByChannel (view channelName c)) s
+    pure $ MessageMsg cs
 
 
-updateMessages
-  :: forall eff
-  .  Array WT.Msg -> State Model (Cmd (|eff) Msg)
+updateMessages :: Array WT.Msg -> State Model (Cmd Msg)
 updateMessages ms = do
   assign (channelModel <<< messages) ms
   pure empty
 
-addMessage :: forall eff. String -> State Model (Cmd (ajax::AJAX|eff) Msg)
+addMessage :: String -> State Model (Cmd Msg)
 addMessage str = do
   c <- use (channelList <<< activeChannel)
   let cn = view channelName c
   s <- get
   pure $ emittingTask $ \ctx -> do
     -- yes, reqBody -> channel
-    runAjax (putChannelByChannel (WT.NewMsg { msg: str} ) cn) s
+    runReaderT (putChannelByChannel (WT.NewMsg { msg: str} ) cn) s
     emitMessage ctx $ ActiveChannelMsg c
     emitMessage ctx $ MessageInputMsg ""
 
 
-updateInputForm
-  :: forall eff
-  .  String -> State Model (Cmd (|eff) Msg)
+updateInputForm :: String -> State Model (Cmd Msg)
 updateInputForm s = do
   assign inputModel s
   pure empty
@@ -130,7 +114,7 @@ viewLoginForm model =
     -- #! style "margin-left" "2em"
     $ mapMarkup LoginFormMsg $ loginForm model
 
-viewMenu ::  Model -> Markup Msg
+viewMenu :: Model -> Markup Msg
 viewMenu model = do
   nav ! id_ "menu" ! cls "l-box pure-u-1 pure-menu pure-menu-horizontal pure-menu-scrollable" $ do
     span ! cls "pure-menu-heading" $ text "Thunderbuns"
@@ -191,7 +175,7 @@ viewDebug model = do
   div_ ! cls "l-box pure-u-1" $ do
     div_ $ text "DEBUG PANE"
 
-main :: Eff (bonsai::BONSAI, dom::DOM, exception::EXCEPTION) Unit
+main :: Effect Unit
 main = do
   hash <- effF $ window >>= document >>= locationHash
   _ <- dbgProgram (ElementId "main") update viewMain emptyModel window

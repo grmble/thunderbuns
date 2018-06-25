@@ -1,6 +1,6 @@
 { db =
   { port = 9042
-  , host = "192.168.56.3"
+  , host = "192.168.99.100"
   , passwdOptions =
     { iterations = 1
     , memory = 140000

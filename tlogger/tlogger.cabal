@@ -1,8 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+-- This file has been generated from package.yaml by hpack version 0.28.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 01f511eb512a73acf36b1d8f053a76f33a054bfe70ad6a0160000fd323d9b6bc
+-- hash: 60625d8c9db954a2cd77a051fac1ea34a5fefeb4395f625cf995c55650fcbfab
 
 name:           tlogger
 version:        0.1.0.0
@@ -16,7 +16,6 @@ license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
-
 extra-source-files:
     README.md
 

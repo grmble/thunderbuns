@@ -1,8 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+-- This file has been generated from package.yaml by hpack version 0.28.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c681a216d10f1dcc19a51d6aa025a725e3c71c0b0bda72f59fbeeacf94e616f0
+-- hash: 3375d2ddf441530e2e050929e4d0d6a9729cd5205685c932342e9fe0f4bf695b
 
 name:           thunderbuns
 version:        0.1.0.0
@@ -16,7 +16,6 @@ license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 cabal-version:  >= 1.10
-
 extra-source-files:
     README.md
 
