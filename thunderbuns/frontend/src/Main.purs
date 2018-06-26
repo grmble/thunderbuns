@@ -186,3 +186,4 @@ main = do
         { timing = true
         , events = true
         })
+

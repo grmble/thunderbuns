@@ -46,15 +46,15 @@ library:
   source-dirs: src
 
 executables:
-  tcql4-exe:
-    main:                Main.hs
-    source-dirs:         app
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - tcql4
+#  tcql4-exe:
+#    main:                Main.hs
+#    source-dirs:         app
+#    ghc-options:
+#    - -threaded
+#    - -rtsopts
+#    - -with-rtsopts=-N
+#    dependencies:
+#    - tcql4
 
 tests:
   tcql4-test:

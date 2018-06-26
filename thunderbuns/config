@@ -1,6 +1,6 @@
 { db =
   { port = 9042
-  , host = "192.168.99.100"
+  , host = "192.168.56.3"
   , passwdOptions =
     { iterations = 1
     , memory = 140000
@@ -8,7 +8,7 @@
     }
   }
 , jwt =
-  { secret = "1235"
+  { secret = "1234"
   , lifetime = 3600
   }
 , server =

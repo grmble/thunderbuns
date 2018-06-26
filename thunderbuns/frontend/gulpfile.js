@@ -1,86 +1,70 @@
-var gulp = require("gulp");
-var watch = require("gulp-watch");
-var purescript = require("gulp-purescript");
-var run = require("gulp-run");
-var del = require("del");
+const gulp = require('gulp');
+const purescript = require('gulp-purescript');
+const del = require('del');
+const run = require('gulp-run');
 
-var sources = [
-  "src/**/*.purs",
-  "test/**/*.purs",
-  "bower_components/purescript-*/src/**/*.purs",
-];
-
-var watchSources = [
-  "src/**/*.purs"
+const sources = [
+  'src/**/*.purs',
+  'test/**/*.purs',
+  'bower_components/purescript-*/src/**/*.purs',
 ];
 
 var distFiles = [
-  "index.html",
-  "*.css",
-  "output/app.js"
+  'index.html',
+  '*.css'
 ];
 
-var staticDir = "../../dist/static";
+var staticDir = '../../dist/static/';
 
-gulp.task("clean", function() {
-  return del([ 'output', 'bower_components', 'node_modules', 'dist' ]);
+
+function clean () {
+    return del(['output', '.pulp-cache']);
+}
+clean.description = 'Clean the output and .pulp-cache directories';
+exports.clean = clean;
+
+
+exports.fullClean = gulp.series(clean, function () {
 });
+exports.fullClean.description = 'Clean also npm and bower artifacts';
 
-gulp.task("clean-app.js", function() {
-  return del([ 'output/app.js' ]);
-});
 
-gulp.task("compile", function () {
-  return purescript.compile({ src: sources });
-});
 
-gulp.task("bundle", ["clean-app.js", "compile"], function () {
+function compile () {
+    return purescript.compile({ src: sources });
+}
+
+function bundle () {
   return purescript.bundle(
-    { src: "output/**/*.js"
-    , module: "Main"
-    , main: "Main"
-    , output: "output/app.js" });
-});
+    { src: 'output/**/*.js'
+    , module: 'Main'
+    , main: 'Main'
+    , output: staticDir + 'app.js' });
+}
 
-gulp.task("docs", function () {
-  return purescript.docs({
-      src: sources,
-      docgen: {
-        // "Name.Of.Module1": "docs/Name/Of/Module1.md",
-      }
-    });
-});
+function test () {
+    return purescript.bundle({ src: 'output/**/*.js', main: 'Test.Main' })
+        .pipe(run('node'));
+}
 
-gulp.task("test", ["compile"], function() {
-  return purescript.bundle({ src: "output/**/*.js", main: "Test.Main" })
-    .pipe(run("node"));
-});
+exports.test = gulp.series(compile, test);
+exports.test.description = 'Run the purescript tests.';
 
-gulp.task("copy", ["bundle"], function() {
+function dist () {
     return gulp.src(distFiles)
         .pipe(gulp.dest(staticDir));
-});
+}
 
-gulp.task("copy-appjs", ["bundle"], function() {
-  return gulp.src("output/app.js")
-    .pipe(gulp.dest(staticDir));
-});
+exports.default = gulp.parallel(gulp.series(compile, bundle), dist);
+exports.default.description = 'Compile and copy to server directory.';
 
-gulp.task("copyDemoSources", [], function() {
-  return gulp.src("src/Demo/*.purs")
-    .pipe(gulp.dest("dist/src/Demo/"));
-});
+function watchPurescript () {
+    return gulp.watch(sources, gulp.series(compile, bundle));
+}
 
-gulp.task("dist", ["copy"
-                  /* , "copyDemoSources" */
-                  ]);
+function watchDist () {
+    return gulp.watch(distFiles, dist);
+}
 
-gulp.task("default", ["bundle", "test", "dist"]);
-
-gulp.task("fast", ["bundle", "copy-appjs"]);
-
-gulp.task("watch", ["fast"], function() {
-  return watch(watchSources, function () {
-    gulp.start("fast");
-  });
-});
+exports.watch = gulp.series(exports.default, gulp.parallel(watchPurescript, watchDist));
+exports.watch.description = 'Watch input files and recompile.';
