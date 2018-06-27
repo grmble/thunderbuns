@@ -3,6 +3,7 @@
   "author": "Juergen Gmeiner <spamless.juergen@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "browser-sync": "^2.24.5",
     "del": "^3.0.0",
     "gulp": "^4.0.0",
     "gulp-purescript": "^2.0.1",

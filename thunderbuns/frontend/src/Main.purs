@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Bonsai (Cmd(..), debugProgram, emitMessage, emittingTask, fullDebug, noDebug, simpleTask)
+import Bonsai (Cmd(..), debugProgram, emitMessage, emittingTask, noDebug, simpleTask)
 import Bonsai.DOM (ElementId(..), document, effF, locationHash, window)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
 import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!), (#!))
@@ -186,4 +186,3 @@ main = do
         { timing = true
         , events = true
         })
-

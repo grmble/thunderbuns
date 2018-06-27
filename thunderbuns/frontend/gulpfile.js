@@ -2,6 +2,7 @@ const gulp = require('gulp');
 const purescript = require('gulp-purescript');
 const del = require('del');
 const run = require('gulp-run');
+const browserSync = require('browser-sync').create();
 
 const sources = [
   'src/**/*.purs',
@@ -62,9 +63,35 @@ function watchPurescript () {
     return gulp.watch(sources, gulp.series(compile, bundle));
 }
 
+function watchPurescriptReload () {
+    return gulp.watch(sources, gulp.series(compile, bundle, reload));
+}
+
 function watchDist () {
     return gulp.watch(distFiles, dist);
 }
 
+function watchDistReload() {
+    return gulp.watch(distFiles, gulp.series(dist, reload));
+}
+
 exports.watch = gulp.series(exports.default, gulp.parallel(watchPurescript, watchDist));
 exports.watch.description = 'Watch input files and recompile.';
+
+function reload(done) {
+    browserSync.reload();
+    done();
+}
+
+function runProxy(done) {
+    browserSync.init({proxy: 'http://localhost:1337/',
+                      startPath: 'static/index.html'});
+    done();
+}
+
+exports.serve =
+    gulp.series(
+        exports.default,
+        runProxy,
+        gulp.parallel(watchPurescriptReload, watchDistReload));
+exports.serve.description = "Start BrowserSync proxy and watch for file changes.";
