@@ -3,20 +3,19 @@ module Thunderbuns.GenPS where
 import Control.Applicative
 import Control.Lens
 import Data.Proxy
-import Data.Text (Text)
-import GHC.TypeLits (KnownSymbol)
+import Data.Semigroup ((<>))
+import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy.IO as LT
 import Language.PureScript.Bridge
-import Servant.API
-import Servant.Foreign
-import Servant.PureScript
+import System.IO
 import Thunderbuns.Auth.Types
 import Thunderbuns.Channel.Types
 import Thunderbuns.Logging
-import Thunderbuns.Server
 
 myTypes :: [SumType 'Haskell]
-myTypes =
+myTypes
   -- equal (Proxy :: Proxy Channel) $ mkSumType (Proxy :: Proxy Channel)
+ =
   [ mkSumType (Proxy :: Proxy Channel)
   , mkSumType (Proxy :: Proxy Msg)
   , mkSumType (Proxy :: Proxy NewMsg)
@@ -28,8 +27,59 @@ myTypes =
 generatePurescript :: IO ()
 generatePurescript = do
   let frontEndRoot = "frontend/src"
-  writeAPIModuleWithSettings mySettings frontEndRoot myBridgeProxy webAPI
   writePSTypes frontEndRoot (buildBridge myBridge) myTypes
+  postprocessTypes
+
+postprocessTypes :: IO ()
+postprocessTypes = do
+  let fn = "frontend/src/Thunderbuns/WebAPI/Types.purs"
+  withFile fn ReadWriteMode $ \h -> do
+    ls <- lines' h []
+    hSeek h AbsoluteSeek 0
+    LT.hPutStr h $ postprocess ls
+    -- hGetContents / lines won't work, hGetContents semi-closes the handle
+  where
+    lines' :: Handle -> [LT.Text] -> IO [LT.Text]
+    lines' h !acc = do
+      b <- hIsEOF h
+      if b
+        then pure $ reverse acc
+        else do
+          next <- LT.hGetLine h
+          lines' h (next : acc)
+    postprocess xlines =
+      LT.intercalate
+        "\n"
+        (prefix xlines <> imports xlines <> imports' <> suffix xlines <> suffix' <>
+         [])
+      where
+        notImport = not . LT.isPrefixOf "import"
+        isImportOrEmpty s = s == "" || LT.isPrefixOf s "import"
+        prefix = takeWhile notImport
+        imports = dropWhile notImport . takeWhile isImportOrEmpty
+        suffix = dropWhile notImport . dropWhile isImportOrEmpty
+        decodeInstance klass =
+          "instance decode" <> klass <> " :: Decode " <> klass <>
+          " where decode = genericDecode (defaultOptions { unwrapSingleConstructors = true })"
+        encodeInstance klass =
+          "instance encode" <> klass <> " :: Encode " <> klass <>
+          " where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })"
+        eqInstance klass = "derive instance eq" <> klass <> " :: Eq " <> klass
+        ordInstance klass =
+          "derive instance ord" <> klass <> " :: Ord " <> klass
+        imports' =
+          [ "import Foreign.Generic (defaultOptions, genericEncode, genericDecode)"
+          , "import Foreign.Class (class Decode, class Encode)"
+          ]
+        suffix' =
+          concatMap
+            (\klass ->
+               [ decodeInstance klass
+               , encodeInstance klass
+               , eqInstance klass
+               , ordInstance klass
+               ])
+            ["Channel", "Msg", "NewMsg", "Priority", "UserPass", "Token"]
 
 -- | Move the types from Thunderbuns.Logging to Thunderbuns.WebAPI.Types
 fixTypesModule :: BridgePart
@@ -51,10 +101,6 @@ fixHashmap = do
   typeModule ^== "Data.HashMap" <|> typeModule ^== "Data.HashMap.Base"
   TypeInfo "purescript-maps" "Data.Map" "Map" <$> psTypeParameters
 
--- | Set the PS api module to Thunderbuns.WebAPI
-mySettings :: Settings
-mySettings = set apiModuleName "Thunderbuns.WebAPI" (addReaderParam "Authorization" defaultSettings)
-
 myBridge :: BridgePart
 myBridge = defaultBridge <|> fixTypesModule <|> fixHashmap
 
@@ -62,24 +108,3 @@ data MyBridge
 
 myBridgeProxy :: Proxy MyBridge
 myBridgeProxy = Proxy
-
-instance HasBridge MyBridge where
-  languageBridge _ = buildBridge myBridge
-
--- XXX missing instance for the AuthProtect header
--- added as orphan, delete this when it appears in servant-foreign
-instance ( KnownSymbol sym
-         , HasForeignType lang ftype Text
-         , HasForeign lang ftype sublayout
-         ) =>
-         HasForeign lang ftype (AuthProtect sym :> sublayout) where
-  type Foreign ftype (AuthProtect sym :> sublayout) = Foreign ftype sublayout
-  foreignFor lang Proxy Proxy req =
-    foreignFor lang Proxy subP $ req & reqHeaders <>~ [HeaderArg arg]
-    where
-      arg =
-        Arg
-          { _argName = PathSegment "Authorization"
-          , _argType = typeFor lang (Proxy :: Proxy ftype) (Proxy :: Proxy Text)
-          }
-      subP = Proxy :: Proxy sublayout

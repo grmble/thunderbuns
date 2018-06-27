@@ -10,35 +10,35 @@ module Thunderbuns.WebAPI where
 
 import Prelude
 
+import Network.HTTP.Affjax (URL, affjax, defaultRequest, post)
+import Thunderfront.Types (Model)
 import Bonsai.DOM (affF)
-import Control.Monad.Reader (ReaderT, asks, lift)
+import Control.Monad.Reader (asks)
 import Control.Monad.Reader.Class (class MonadReader)
 import Data.Argonaut.Core (Json)
 import Data.Either (Either(..))
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
+import Data.HTTP.Method (Method(..))
 import Data.Lens (Lens', view)
 import Data.Lens.Iso (Iso', iso)
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Show (genericShow)
-import Data.HTTP.Method (Method(..))
 import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (class Newtype, unwrap)
-import Data.Traversable (traverse)
-import Data.Tuple (Tuple(..))
 import Data.Symbol (SProxy(..))
-import Effect.Aff (Aff)
+import Data.Traversable (traverse)
+import Data.Tuple (Tuple)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Foreign (readArray)
 import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
 import Foreign.Generic.Class (class GenericEncode, class GenericDecode)
 import Foreign.Generic.Types (Options)
-import Network.HTTP.Affjax
+import Global.Unsafe (unsafeEncodeURIComponent)
 import Network.HTTP.Affjax.Request as ARq
-import Network.HTTP.RequestHeader as RH
 import Network.HTTP.Affjax.Response as ARs
-import Thunderbuns.WebAPI.Types (Channel(..), Msg(..), NewMsg(..), Priority(..), Token(..), UserPass(..))
-import Thunderfront.Types
+import Network.HTTP.RequestHeader as RH
+import Thunderbuns.WebAPI.Types (Channel, Msg, NewMsg, Priority, Token, UserPass)
 import Unsafe.Coerce (unsafeCoerce)
 
 newtype ApiParams
@@ -81,10 +81,8 @@ gDecodeArray json = liftAff $ affF $ do
   arr <- readArray (unsafeCoerce json)
   traverse (genericDecode gOpts) arr
 
--- XXX: url encoding for path variable
--- XXX: check response status
 urlPath :: String -> URL
-urlPath s = s
+urlPath = unsafeEncodeURIComponent
 
 class HasApiParams a where
   apiParams :: Lens' a ApiParams
