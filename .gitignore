@@ -9,7 +9,6 @@
 .hsenv*
 .stack-work/
 .stack-work/
-/*.cabal
 /config
 /dist
 TAGS
