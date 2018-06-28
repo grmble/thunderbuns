@@ -2,15 +2,16 @@ module Main where
 
 import Prelude
 
-import Bonsai (Cmd(..), debugProgram, emitMessage, emittingTask, noDebug, simpleTask)
-import Bonsai.DOM (ElementId(..), document, effF, locationHash, window)
+import Bonsai (Cmd, debugProgram, emitMessage, emittingTask, noDebug, simpleTask)
+import Bonsai.Core (issueCommand)
+import Bonsai.DOM (ElementId(..), affF, document, defaultView, effF, locationHash, setLocationHash, window)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
-import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!), (#!))
+import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!))
 import Bonsai.Html.Attributes (cls, id_, href, style, target, typ, value)
 import Bonsai.Html.Events (onClick, onClickPreventDefault, onInput, onKeyEnter)
-import Effect (Effect)
+import Bonsai.Storage (getItem, setItem, removeItem)
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.State (State, runState, get)
+import Control.Monad.State (State, execState, runState, get)
 import Control.Plus (empty)
 import Data.Array (head)
 import Data.Foldable (for_, elem)
@@ -18,6 +19,9 @@ import Data.Lens (assign, modifying, set, use, view)
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Tuple (Tuple)
+import Data.String as String
+import Effect (Effect)
+import Effect.Console (log)
 import Thunderbuns.WebAPI (getChannel, getChannelByChannel, postAuth, putChannelByChannel)
 import Thunderbuns.WebAPI.Types (_Channel, Channel(..), Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
@@ -35,9 +39,18 @@ update (NewMessageMsg x) = runState $ addMessage x
 update (CurrentViewMsg x) = runState $ assign currentView x *> pure empty
 
 updateJwtToken :: Maybe String -> State Model (Cmd Msg)
-updateJwtToken jwt = do
-  assign jwtToken jwt
+updateJwtToken Nothing = do
+  assign jwtToken Nothing
   pure empty
+updateJwtToken (Just jwt) = do
+  assign jwtToken (Just jwt)
+  model <- get
+  pure $ simpleTask $ \doc -> do
+    affF $ do
+      win <- defaultView doc
+      maybe (removeItem "tbToken" win) (flip (setItem "tbToken") win) (Just jwt)
+    cs <- runReaderT getChannel model
+    pure $ ChannelListMsg cs
 
 updateLoginForm :: FormMsg -> State Model (Cmd Msg)
 updateLoginForm FormOK = do
@@ -50,27 +63,25 @@ updateLoginForm FormOK = do
   pure $ emittingTask $ \ctx -> do
     Token {token} <- runReaderT (postAuth (UserPass {user: u, pass:p})) model
     emitMessage ctx (JwtTokenMsg $ Just token)
-    let model' = set jwtToken (Just token) model
-    cs <- runReaderT getChannel model'
-    emitMessage ctx (ChannelListMsg cs)
 updateLoginForm msg = do
   modifying loginFormModel (updatePlain msg)
   pure empty
-
 
 updateChannelList :: Array Channel -> State Model (Cmd Msg)
 updateChannelList cs = do
   assign (channelList <<< channels) cs
   c <- use (channelList <<< activeChannel)
-  -- XXX eq classes!
-  pure $ pure $ ActiveChannelMsg (fromMaybe c $ head cs)
+  let c' = if elem c cs then c else (fromMaybe c $ head cs)
+  pure $ pure $ ActiveChannelMsg c'
 
 updateActiveChannel :: Channel -> State Model (Cmd Msg)
 updateActiveChannel c = do
   assign (channelList <<< activeChannel) c
   s <- get
-  pure $ simpleTask $ \_ -> do
-    cs <- runReaderT (getChannelByChannel (view channelName c)) s
+  pure $ simpleTask $ \doc -> do
+    let n = view channelName c
+    cs <- runReaderT (getChannelByChannel n) s
+    affF $ setLocationHash ("#!" <> n) doc
     pure $ MessageMsg cs
 
 
@@ -154,9 +165,8 @@ viewChannels model = do
           ! onClickPreventDefault (ActiveChannelMsg c)
           $ text (view channelName c)
   where
-    -- XXX eq classes generated! unify with viewMenu
     menuItemClasses current =
-      if (view channelName current) == (view (channelList <<< activeChannel <<< channelName) model)
+      if current == (view (channelList <<< activeChannel) model)
           then "pure-menu-item pure-menu-item-selected"
           else "pure-menu-item"
 
@@ -178,7 +188,11 @@ viewDebug model = do
 main :: Effect Unit
 main = do
   hash <- effF $ window >>= document >>= locationHash
-  _ <- dbgProgram (ElementId "main") update viewMain emptyModel window
+  log $ "Hash: " <> hash
+  jwt <- effF $ window >>= getItem "tbToken"
+  let model = set (channelList <<< activeChannel <<< channelName) (String.drop 2 hash) emptyModel
+  prg <- dbgProgram (ElementId "main") update viewMain model window
+  issueCommand prg (pure $ JwtTokenMsg jwt)
   pure unit
   where
     dbgProgram =

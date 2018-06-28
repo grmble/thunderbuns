@@ -2,7 +2,6 @@
 (A) loading of earlier messages when scrolling to top
 (A) scroll down on channel switch, focus input element after logging in/switching to channel view
 (B) simpleTask arg is most often not needed. simpleTask, domTask, emittingTask ??? +bonsai purescript-bonsai-types#2
-(B) storage api +bonsai purescript-bonsai-dom#1
 (B) supervise connection +cql4
 (C) logging - support request id (req_id) +tlogger
 (C) typesafe form result +forms +frontend

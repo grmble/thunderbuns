@@ -85,7 +85,9 @@ function reload(done) {
 
 function runProxy(done) {
     browserSync.init({proxy: 'http://localhost:1337/',
-                      startPath: 'static/index.html'});
+                      startPath: 'static/index.html',
+                      reloadOnRestart: true
+                     });
     done();
 }
 

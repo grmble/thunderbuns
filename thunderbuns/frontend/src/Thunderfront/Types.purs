@@ -46,7 +46,7 @@ emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
         , channelList: ChannelList { activeChannel: (Channel { channelName: "Default" })
-                                   , channels: [Channel { channelName: "" } ]}
+                                   , channels: [Channel { channelName: "Default" } ]}
         , channelModel: ChannelModel { messages: []}
         , formModels: FormModels { inputModel: ""
                                  , loginFormModel: emptyFormModel}
