@@ -26,6 +26,7 @@ dependencies:
 - base16-bytestring
 - base64-bytestring
 - bifunctors
+- binary
 - bytestring
 - cryptonite
 - dhall

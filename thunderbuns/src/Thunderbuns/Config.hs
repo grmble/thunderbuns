@@ -10,11 +10,11 @@ import Data.Maybe (maybe)
 import qualified Data.Text.Lazy as LT
 import Database.CQL4 (Connection)
 import Dhall
-import Network.Wai.EventSource (ServerEvent)
 import System.Environment (lookupEnv)
 import qualified Thunderbuns.Config.DB as DBConf
 import qualified Thunderbuns.Config.Jwt as JConf
 import qualified Thunderbuns.Config.Server as SConf
+import Thunderbuns.Channel.Types (Msg)
 import Thunderbuns.Logging
 import UnliftIO.STM (TChan, TMVar, atomically, readTMVar)
 
@@ -51,7 +51,7 @@ data Env = Env
   { _envConfig :: Config
   , _envLogger :: Logger
   , _envDBConn :: TMVar Connection
-  , _envEventChannel :: TChan ServerEvent
+  , _envEventChannel :: TChan Msg
   }
 
 $(makeClassy ''Env)
@@ -85,7 +85,7 @@ dbConnection :: (HasDbConnection r, MonadIO m) => r -> m Connection
 dbConnection r = atomically $ readTMVar $ view dbConnectionL r
 
 class HasEventChannel a where
-  eventBroadcast :: Getter a (TChan ServerEvent)
+  eventBroadcast :: Getter a (TChan Msg)
 
 instance HasEventChannel Env where
   eventBroadcast = envEventChannel

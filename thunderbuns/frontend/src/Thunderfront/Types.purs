@@ -15,6 +15,7 @@ import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Thunderbuns.WebAPI.Types (Channel(..), _Channel)
 import Thunderbuns.WebAPI.Types as WT
+import Thunderfront.EventSource (EventSource)
 
 -- | Main application model
 -- |
@@ -31,6 +32,7 @@ import Thunderbuns.WebAPI.Types as WT
 newtype Model =
   Model
   { jwtToken :: Maybe String
+  , eventSource :: Maybe EventSource
   , channelList :: ChannelList
   , channelModel :: ChannelModel
   , formModels :: FormModels
@@ -45,6 +47,7 @@ derive instance genericModel :: Generic Model _
 emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
+        , eventSource: Nothing
         , channelList: ChannelList { activeChannel: (Channel { channelName: "Default" })
                                    , channels: [Channel { channelName: "Default" } ]}
         , channelModel: ChannelModel { messages: []}
@@ -55,6 +58,9 @@ emptyModel =
 
 jwtToken :: Lens' Model (Maybe String)
 jwtToken = _Newtype <<< prop (SProxy :: SProxy "jwtToken")
+
+eventSource :: Lens' Model (Maybe EventSource)
+eventSource = _Newtype <<< prop (SProxy :: SProxy "eventSource")
 
 channelList :: Lens' Model ChannelList
 channelList = _Newtype <<< prop (SProxy :: SProxy "channelList")
@@ -158,11 +164,13 @@ instance showCurrentView :: Show CurrentView where
 -- | Messages
 data Msg
   = JwtTokenMsg (Maybe String)
+  | EventSourceMsg (Maybe EventSource)
   | MessageInputMsg String
   | LoginFormMsg FormMsg
   | ChannelListMsg (Array Channel)
   | ActiveChannelMsg Channel
   | MessageMsg (Array WT.Msg)
+  | EventMsg WT.Msg
   | NewMessageMsg String
   | CurrentViewMsg CurrentView
 

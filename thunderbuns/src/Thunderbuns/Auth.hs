@@ -11,7 +11,6 @@ import Data.Bifunctor (first)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy as BL
-import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Database.CQL4
@@ -130,7 +129,6 @@ decodeToken ::
 decodeToken tk = do
   t <- getPOSIXTime
   s <- decodeJwtSecret
-  logDebug ("decodeToken: s=" <> TE.decodeUtf8 s)
   -- a changed secret will cause the hmacDecode to fail (message: bad signature)
   (_, bs) <- liftEither $ first (const authorizationDenied) $ hmacDecode s tk
   c <-

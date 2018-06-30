@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Bonsai (Cmd, debugProgram, emitMessage, emittingTask, noDebug, simpleTask)
+import Bonsai (Cmd, debugProgram, emitMessage, emittingTask, noDebug, simpleTask, unitTask)
 import Bonsai.Core (issueCommand)
 import Bonsai.DOM (ElementId(..), affF, document, defaultView, effF, locationHash, setLocationHash, window)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
@@ -11,9 +11,9 @@ import Bonsai.Html.Attributes (cls, id_, href, style, target, typ, value)
 import Bonsai.Html.Events (onClick, onClickPreventDefault, onInput, onKeyEnter)
 import Bonsai.Storage (getItem, setItem, removeItem)
 import Control.Monad.Reader (runReaderT)
-import Control.Monad.State (State, execState, runState, get)
+import Control.Monad.State (State, execState, runState, get, gets)
 import Control.Plus (empty)
-import Data.Array (head)
+import Data.Array (head, snoc)
 import Data.Foldable (for_, elem)
 import Data.Lens (assign, modifying, set, use, view)
 import Data.Map as M
@@ -21,36 +21,63 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Tuple (Tuple)
 import Data.String as String
 import Effect (Effect)
+import Effect.Class (liftEffect)
 import Effect.Console (log)
-import Thunderbuns.WebAPI (getChannel, getChannelByChannel, postAuth, putChannelByChannel)
+import Foreign (Foreign)
+import Thunderbuns.WebAPI (gDecodeEvent, getChannel, getChannelByChannel, postAuth, putChannelByChannel)
 import Thunderbuns.WebAPI.Types (_Channel, Channel(..), Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
+import Thunderfront.EventSource
 import Thunderfront.Forms.Login (loginForm)
-import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, emptyModel, inputModel, jwtToken, loginFormModel, messages)
+import Thunderfront.Types
 
 update :: Msg -> Model -> Tuple (Cmd Msg) Model
 update (JwtTokenMsg x) = runState $ updateJwtToken x
+update (EventSourceMsg x) = runState $ updateEventSource x
 update (LoginFormMsg x) = runState $ updateLoginForm x
 update (MessageInputMsg x) = runState $ updateInputForm x
 update (ChannelListMsg x) = runState $ updateChannelList x
 update (ActiveChannelMsg x) = runState $ updateActiveChannel x
 update (MessageMsg x) = runState $ updateMessages x
+update (EventMsg x) = runState $ updateEvent x
 update (NewMessageMsg x) = runState $ addMessage x
 update (CurrentViewMsg x) = runState $ assign currentView x *> pure empty
 
 updateJwtToken :: Maybe String -> State Model (Cmd Msg)
 updateJwtToken Nothing = do
   assign jwtToken Nothing
-  pure empty
+  pure $ simpleTask $ \doc -> do
+    affF $ defaultView doc >>= removeItem "tbToken"
+    pure $ EventSourceMsg Nothing
 updateJwtToken (Just jwt) = do
   assign jwtToken (Just jwt)
   model <- get
-  pure $ simpleTask $ \doc -> do
-    affF $ do
-      win <- defaultView doc
-      maybe (removeItem "tbToken" win) (flip (setItem "tbToken") win) (Just jwt)
+  pure $ emittingTask $ \ctx -> do
+    affF (defaultView ctx.document >>= setItem "tbToken" jwt)
     cs <- runReaderT getChannel model
-    pure $ ChannelListMsg cs
+    emitMessage ctx $ ChannelListMsg cs
+    es <- liftEffect $ newEventSource "/events" (Just jwt)
+    emitMessage ctx $ EventSourceMsg (Just es)
+
+updateEventSource :: Maybe EventSource -> State Model (Cmd Msg)
+updateEventSource Nothing = do
+  es <- gets (view eventSource)
+  assign eventSource Nothing
+  pure $ unitTask $ const $ liftEffect $ for_ es close
+updateEventSource (Just es) = do
+  assign eventSource (Just es)
+  pure $ emittingTask $ \ctx -> do
+    liftEffect $ do
+      onMessage consoleHandler es
+      onMessage (\ev -> decodeEvent ev >>= ctx.emitter) es
+
+decodeEvent :: Foreign -> Effect Msg
+decodeEvent = map EventMsg <<< gDecodeEvent
+
+updateEvent :: WT.Msg -> State Model (Cmd Msg)
+updateEvent msg = do
+  modifying (channelModel <<< messages) (\ms -> snoc ms msg)
+  pure empty
 
 updateLoginForm :: FormMsg -> State Model (Cmd Msg)
 updateLoginForm FormOK = do
@@ -98,7 +125,7 @@ addMessage str = do
   pure $ emittingTask $ \ctx -> do
     -- yes, reqBody -> channel
     runReaderT (putChannelByChannel (WT.NewMsg { msg: str} ) cn) s
-    emitMessage ctx $ ActiveChannelMsg c
+    -- emitMessage ctx $ ActiveChannelMsg c
     emitMessage ctx $ MessageInputMsg ""
 
 

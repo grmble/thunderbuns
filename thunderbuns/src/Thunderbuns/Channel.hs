@@ -14,7 +14,9 @@ import Thunderbuns.Auth.Types (Username)
 import Thunderbuns.Channel.Types
 import Thunderbuns.Config
 import Thunderbuns.DB.Internal (runDB)
+import Thunderbuns.Event (broadcast)
 import Thunderbuns.Exception
+import Thunderbuns.Logging (HasLogger, logDebug)
 import Thunderbuns.Validate
 
 -- | Channel abstraction
@@ -27,7 +29,7 @@ class Monad m =>
   addMessage :: V Msg -> m () -- ^ add a new message
   mkMsg :: Channel -> Username -> T.Text -> m Msg -- ^ create msg (timeuuid!)
 
-instance HasDbConnection r =>
+instance (HasDbConnection r, HasEventChannel r, HasLogger r) =>
          MonadChannel (ReaderT r (ExceptT ThunderbunsException IO)) where
   list =
     runDB $ do
@@ -60,6 +62,8 @@ instance HasDbConnection r =>
         Quorum
         "insert into tb.msg (channel, created, user, msg) values (?,?,?,?)"
         [TextValue c, TimeUUIDValue uu, TextValue u, TextValue m]
+    logDebug "broadcasting new message"
+    broadcast (unV vm)
   mkMsg c u s =
     liftIO nextUUID >>=
     maybe

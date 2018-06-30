@@ -1,6 +1,8 @@
-(A) event system, server side events via polyfill
-(A) loading of earlier messages when scrolling to top
-(A) scroll down on channel switch, focus input element after logging in/switching to channel view
+(A) events by lastEventId +backend
+(A) scroll down after adding message +frontend
+(A) events endpoint should have it   s own metrics
+(B) loading of earlier messages when scrolling to top
+(B) scroll down on channel switch, focus input element after logging in/switching to channel view
 (B) simpleTask arg is most often not needed. simpleTask, domTask, emittingTask ??? +bonsai purescript-bonsai-types#2
 (B) supervise connection +cql4
 (C) logging - support request id (req_id) +tlogger

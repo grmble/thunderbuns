@@ -10,9 +10,7 @@ module Thunderbuns.WebAPI where
 
 import Prelude
 
-import Network.HTTP.Affjax (URL, affjax, defaultRequest, post)
-import Thunderfront.Types (Model)
-import Bonsai.DOM (affF)
+import Bonsai.DOM (affF, effF)
 import Control.Monad.Reader (asks)
 import Control.Monad.Reader.Class (class MonadReader)
 import Data.Argonaut.Core (Json)
@@ -29,16 +27,20 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple)
+import Effect (Effect)
 import Effect.Aff.Class (class MonadAff, liftAff)
-import Foreign (readArray)
-import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
+import Foreign (Foreign, readArray, readString)
+import Foreign.Generic (defaultOptions, genericDecode, genericEncode, genericDecodeJSON)
 import Foreign.Generic.Class (class GenericEncode, class GenericDecode)
 import Foreign.Generic.Types (Options)
+import Foreign.Index ((!))
 import Global.Unsafe (unsafeEncodeURIComponent)
+import Network.HTTP.Affjax (URL, affjax, defaultRequest, post)
 import Network.HTTP.Affjax.Request as ARq
 import Network.HTTP.Affjax.Response as ARs
 import Network.HTTP.RequestHeader as RH
 import Thunderbuns.WebAPI.Types (Channel, Msg, NewMsg, Priority, Token, UserPass)
+import Thunderfront.Types (Model)
 import Unsafe.Coerce (unsafeCoerce)
 
 newtype ApiParams
@@ -80,6 +82,10 @@ gDecodeArray :: forall a rep m. Generic a rep => GenericDecode rep => MonadAff m
 gDecodeArray json = liftAff $ affF $ do
   arr <- readArray (unsafeCoerce json)
   traverse (genericDecode gOpts) arr
+
+gDecodeEvent :: forall a rep. Generic a rep => GenericDecode rep => Foreign -> Effect a
+gDecodeEvent ev = do
+  effF $ (ev ! "data") >>= readString >>= genericDecodeJSON gOpts
 
 urlPath :: String -> URL
 urlPath = unsafeEncodeURIComponent

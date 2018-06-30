@@ -10,6 +10,7 @@ import Thunderbuns.Auth.Types
 import Thunderbuns.Channel
 import Thunderbuns.Channel.Types
 import Thunderbuns.Config
+import Thunderbuns.Logging (HasLogger)
 import Thunderbuns.Server.Types
 
 type ChannelAPI
@@ -21,7 +22,8 @@ type ChannelAPI
 channelAPI :: Proxy ChannelAPI
 channelAPI = Proxy
 
-channelServer :: HasDbConnection r => r -> Claims -> Server ChannelAPI
+channelServer ::
+     (HasDbConnection r, HasEventChannel r, HasLogger r) => r -> Claims -> Server ChannelAPI
 channelServer r claims =
   mapError list r :<|> addChannel' :<|> messages' :<|> addMessage'
   where
@@ -31,7 +33,6 @@ channelServer r claims =
         pure NoContent
     addMessage' c (NewMsg s) =
       flip mapError r $ do
-        mkMsg (Channel c) (jwtSub claims) s >>= validateTB >>=
-          addMessage
+        mkMsg (Channel c) (jwtSub claims) s >>= validateTB >>= addMessage
         pure NoContent
     messages' c = mapError (validateTB (Channel c) >>= messages) r

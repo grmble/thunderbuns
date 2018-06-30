@@ -5,14 +5,15 @@ const run = require('gulp-run');
 const browserSync = require('browser-sync').create();
 
 const sources = [
-  'src/**/*.purs',
-  'test/**/*.purs',
-  'bower_components/purescript-*/src/**/*.purs',
+    'src/**/*.purs',
+    'test/**/*.purs',
+    'bower_components/purescript-*/src/**/*.purs',
 ];
 
 var distFiles = [
-  'index.html',
-  '*.css'
+    'index.html',
+    '*.css',
+    'bower_components/event-source-polyfill/src/eventsource.min.js'
 ];
 
 var staticDir = '../../dist/static/';
