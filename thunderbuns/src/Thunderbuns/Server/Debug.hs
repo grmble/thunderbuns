@@ -5,13 +5,12 @@
 module Thunderbuns.Server.Debug where
 
 import Control.Lens (view)
-import Control.Monad.Reader
 import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import qualified Data.HashSet as S
 import qualified Data.Text as T
-import Jose.Jwt (JwtClaims)
 import Servant
+import Thunderbuns.Auth.Types
 import Thunderbuns.Logging
 import UnliftIO.STM
 
@@ -30,21 +29,21 @@ type DebugAPI
 debugAPI :: Proxy DebugAPI
 debugAPI = Proxy
 
-debugServerT ::
-     (HasLogger h) => JwtClaims -> ServerT DebugAPI (ReaderT h Handler)
-debugServerT _ = listLogLevels :<|> modifyLogLevels
+debugServer ::
+     (HasLogger r) => r -> Claims -> Server DebugAPI
+debugServer r _ = listLogLevels :<|> modifyLogLevels
   where
-    listLogLevels :: (HasLogger h) => ReaderT h Handler LogLevels
+    listLogLevels :: Handler LogLevels
     listLogLevels = do
-      namesTV <- asks (view $ loggerL . loggerNamesL)
+      let namesTV = view (loggerL . loggerNamesL) r
       names <- readTVarIO namesTV
-      priMapTV <- asks (view $ loggerL . priorityMapL)
+      let priMapTV = view (loggerL . priorityMapL) r
       priMap <- readTVarIO priMapTV
       pure $ M.toList $ foldr (\n -> M.insert n (M.lookup n priMap)) M.empty names
-    modifyLogLevels :: (HasLogger h) => LogLevels -> ReaderT h Handler NoContent
+    modifyLogLevels :: LogLevels -> Handler NoContent
     modifyLogLevels lls = do
-      namesTV <- asks (view $ loggerL . loggerNamesL)
-      priMapTV <- asks (view $ loggerL . priorityMapL)
+      let namesTV = view (loggerL . loggerNamesL) r
+      let priMapTV = view (loggerL . priorityMapL) r
       for_ lls $ \(n, mpri) ->
         atomically $ do
           modifyTVar namesTV (S.insert n)

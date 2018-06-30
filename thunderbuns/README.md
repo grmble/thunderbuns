@@ -26,6 +26,7 @@ Current status: technological playground
 * redis - fast, clustering support ?
 * rabbitmq - not so fast
 * jocko - kafka clone in golang
+* nsq - distributed queue in golang
 
 ## haskell libraries
 

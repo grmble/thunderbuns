@@ -5,7 +5,6 @@ module Thunderbuns.Channel where
 
 import Control.Monad.Except
 import Control.Monad.Reader
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Traversable
 import Data.UUID (fromText, toText)

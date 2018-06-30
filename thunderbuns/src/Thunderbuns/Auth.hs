@@ -17,7 +17,7 @@ import qualified Data.Text.Encoding as TE
 import Database.CQL4
 import Jose.Jwa (JwsAlg(..))
 import Jose.Jws (hmacDecode, hmacEncode)
-import Jose.Jwt
+import Jose.Jwt (IntDate(..), unJwt)
 import Thunderbuns.Auth.Types
 import Thunderbuns.Config
 import Thunderbuns.Config.DB
@@ -41,7 +41,6 @@ class Monad m =>
 addUser ::
      ( HasDbConfig r
      , MonadReader r m
-     , MonadTLogger m
      , MonadError ThunderbunsException m
      , MonadAuthDb m
      )
@@ -102,11 +101,7 @@ newJwtToken u t = do
     Right tk -> pure $ Token (TE.decodeUtf8 $ unJwt tk)
 
 decodeJwtSecret ::
-     ( HasJwtConfig r
-     , MonadReader r m
-     , MonadTLogger m
-     , MonadError ThunderbunsException m
-     )
+     (HasJwtConfig r, MonadReader r m, MonadError ThunderbunsException m)
   => m B.ByteString
 decodeJwtSecret = do
   t16 <- asks (view (jwtConfig . secret))
@@ -116,12 +111,11 @@ decodeJwtSecret = do
     else throwError $ internalError ("B16.decode: " ++ show err)
 
 decodeToken' ::
-     B.ByteString -> POSIXTime -> B.ByteString -> Either T.Text JwtClaims
+     B.ByteString -> POSIXTime -> B.ByteString -> Either T.Text Claims
 decodeToken' tk t s = do
   (_, bs) <- first (T.pack . show) $ hmacDecode s tk
   c <- first (T.pack . show) $ A.eitherDecodeStrict' bs
-  et <- maybeError "no expiration in token" (jwtExp c)
-  if et < IntDate t
+  if jwtExp c < IntDate t
     then Left "token expired"
     else Right c
 
@@ -132,7 +126,7 @@ decodeToken ::
      , MonadError ThunderbunsException m
      )
   => B.ByteString
-  -> m JwtClaims
+  -> m Claims
 decodeToken tk = do
   t <- getPOSIXTime
   s <- decodeJwtSecret
@@ -143,20 +137,16 @@ decodeToken tk = do
     liftEither $
     first (\e -> internalError ("json decode: " ++ e)) $
     A.eitherDecodeStrict' bs
-  et <- maybeError (internalError "no expiration in token") (jwtExp c)
-  if et < IntDate t
+  if jwtExp c < IntDate t
     then logError "token expired" *> throwError authorizationDenied
     else pure c
 
-emptyClaims :: JwtClaims
-emptyClaims = JwtClaims Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-
 newClaims ::
-     (HasJwtConfig r, MonadReader r m) => Username -> POSIXTime -> m JwtClaims
+     (HasJwtConfig r, MonadReader r m) => Username -> POSIXTime -> m Claims
 newClaims u t = do
   dt <- asks (view (jwtConfig . lifetime))
   let ex = t + realToFrac dt
-  pure $ emptyClaims {jwtSub = Just u, jwtExp = Just (IntDate ex)}
+  pure Claims {jwtSub = u, jwtExp = IntDate ex}
 
 instance HasDbConnection r =>
          MonadAuthDb (ReaderT r (ExceptT ThunderbunsException IO)) where

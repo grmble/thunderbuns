@@ -6,6 +6,7 @@ import qualified Data.ByteString as B
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Thunderbuns.Validate (DefaultValidator(..), appmsg)
+import Jose.Jwt (IntDate)
 
 data UserPass = UserPass
   { user :: T.Text
@@ -29,3 +30,7 @@ type Salt = B.ByteString
 type Hash = B.ByteString
 type Username = T.Text
 
+-- | Claims for our tokens
+data Claims = Claims { jwtSub :: T.Text, jwtExp :: IntDate } deriving (Show, Eq)
+
+$(deriveJSON defaultOptions ''Claims)

@@ -10,12 +10,13 @@ import Data.Maybe (maybe)
 import qualified Data.Text.Lazy as LT
 import Database.CQL4 (Connection)
 import Dhall
+import Network.Wai.EventSource (ServerEvent)
 import System.Environment (lookupEnv)
 import qualified Thunderbuns.Config.DB as DBConf
-import qualified Thunderbuns.Config.Server as SConf
 import qualified Thunderbuns.Config.Jwt as JConf
+import qualified Thunderbuns.Config.Server as SConf
 import Thunderbuns.Logging
-import UnliftIO.STM (TMVar, atomically, readTMVar)
+import UnliftIO.STM (TChan, TMVar, atomically, readTMVar)
 
 -- | Config aggregates all configuration
 --
@@ -49,7 +50,8 @@ readConfig = do
 data Env = Env
   { _envConfig :: Config
   , _envLogger :: Logger
-  , envDBConn :: TMVar Connection
+  , _envDBConn :: TMVar Connection
+  , _envEventChannel :: TChan ServerEvent
   }
 
 $(makeClassy ''Env)
@@ -75,11 +77,17 @@ instance HasLogger Env where
 class HasDbConnection a where
   dbConnectionL :: Getter a (TMVar Connection)
 
-instance HasDbConnection Env
-  -- yeah, it's a full lens, but it can only be viewed ... or can it?
-                                                                      where
-  dbConnectionL k e = fmap (\x -> e {envDBConn = x}) (k (envDBConn e))
+instance HasDbConnection Env where
+  dbConnectionL = envDBConn
 
 -- | Read the global db connection from the Environment
-dbConnection :: (HasDbConnection e, MonadIO m) => e -> m Connection
-dbConnection e = atomically $ readTMVar $ view dbConnectionL e
+dbConnection :: (HasDbConnection r, MonadIO m) => r -> m Connection
+dbConnection r = atomically $ readTMVar $ view dbConnectionL r
+
+class HasEventChannel a where
+  eventBroadcast :: Getter a (TChan ServerEvent)
+
+instance HasEventChannel Env where
+  eventBroadcast = envEventChannel
+
+

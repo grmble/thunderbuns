@@ -13,7 +13,6 @@ import qualified Data.List as L
 import Data.Semigroup ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import Jose.Jwt
 import Network.HTTP.Types (hAuthorization)
 import Network.Wai (Request, requestHeaders)
 import Servant
@@ -32,12 +31,10 @@ type AuthAPI
 authAPI :: Proxy AuthAPI
 authAPI = Proxy
 
-userServerT ::
-     (HasLogger r, HasDbConnection r, HasJwtConfig r)
-  => ServerT AuthAPI (ReaderT r Handler)
-userServerT = authenticateUser
+authServer :: Env -> Server AuthAPI
+authServer r = authenticateUser
   where
-    authenticateUser up = mapError (validateTB up >>= authenticate)
+    authenticateUser up = mapError (validateTB up >>= authenticate) r
 
 -- | Generate a random secret suitable for jwt tokens
 --
@@ -49,28 +46,30 @@ randomSecret = do
 
 -- | JWT Auth handler, as needed by servant
 jwtAuthHandler ::
-     (HasJwtConfig e, HasLogger e) => e -> AuthHandler Request JwtClaims
-jwtAuthHandler e = mkAuthHandler $ \req -> runReaderT (jwtAuthHandler' req) e
+     (HasJwtConfig r, HasLogger r) => r -> AuthHandler Request Claims
+jwtAuthHandler r = mkAuthHandler $ \req -> jwtAuthHandler' req r
 
 -- | JWT Auth Handler in our ReaderT e Handler Monad
 jwtAuthHandler' ::
-     (HasJwtConfig e, HasLogger e) => Request -> ReaderT e Handler JwtClaims
-jwtAuthHandler' req = do
+     (HasJwtConfig r, HasLogger r) => Request -> r -> Handler Claims
+jwtAuthHandler' req r = do
   auth <-
     maybe
-      (authorizationDenied "can not find authorization header")
+      (denied "can not find authorization header")
       pure
       (L.lookup hAuthorization (requestHeaders req))
-  logDebug ("Authorization header: " <> TE.decodeUtf8 auth)
+  logd ("Authorization header: " <> TE.decodeUtf8 auth)
   tk <-
     case Atto.parseOnly bearer auth of
-      Left err -> authorizationDenied $ T.pack err
+      Left err -> denied $ T.pack err
       Right x -> pure x
-  logDebug ("JWT from header: " <> TE.decodeUtf8 tk)
-  mapError $ decodeToken tk
+  logd ("JWT from header: " <> TE.decodeUtf8 tk)
+  mapError (decodeToken tk) r
   where
     bearer :: Atto.Parser B.ByteString
     bearer = do
       _ <- Atto.string "Bearer "
       Atto.skipWhile (0x20 ==)
       Atto.takeByteString
+    denied s = runReaderT (authorizationDenied s) r
+    logd s = runReaderT (logDebug s) r

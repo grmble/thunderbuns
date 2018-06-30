@@ -42,11 +42,13 @@ internalError logMsg = do
   logError (msg <> ": " <> logMsg)
   throwError $ servantErr err500 msg
 
-mapError :: ReaderT r (ExceptT ThunderbunsException IO) a -> ReaderT r Handler a
-mapError ma =
-  ReaderT $ \r -> do
-    ea <- liftIO $ runExceptT $ runReaderT ma r
-    liftEither $ first tbServantErr ea
+mapError :: ReaderT r (ExceptT ThunderbunsException IO) a -> r -> Handler a
+mapError ma r = do
+  ea <- liftIO $ runExceptT $ runReaderT ma r
+  liftEither $ first tbServantErr ea
+
+mapErrorT :: ReaderT r (ExceptT ThunderbunsException IO) a -> ReaderT r Handler a
+mapErrorT ma = ReaderT $ \r -> mapError ma r
 
 tbServantErr :: ThunderbunsException -> ServantErr
 tbServantErr (AuthorizationDenied _) =
@@ -57,5 +59,6 @@ tbServantErr (InternalError _ _) = servantErr err500 "Internal error"
 tbServantErr (ValidationException ms _) =
   servantErr err400 ("Validation error: " <> T.pack (L.intercalate ", " ms))
 
-validateTB :: (MonadError ThunderbunsException m, DefaultValidator a) => a -> m (V a)
+validateTB ::
+     (MonadError ThunderbunsException m, DefaultValidator a) => a -> m (V a)
 validateTB a = liftEither $ first validationException $ validate a

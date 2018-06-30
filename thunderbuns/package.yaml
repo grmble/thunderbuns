@@ -54,6 +54,7 @@ dependencies:
 - wai
 - wai-app-static
 - wai-middleware-prometheus
+- wai-extra
 - warp
 
 library:

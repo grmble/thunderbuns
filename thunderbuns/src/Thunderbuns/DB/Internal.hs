@@ -8,7 +8,6 @@ import qualified Data.Text.Encoding as TE
 import Database.CQL4
 import Thunderbuns.Config
 import Thunderbuns.Config.DB (HasDbConfig, dbConfig, host, port)
-import Thunderbuns.Exception
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (bracket)
 import UnliftIO.STM (atomically, putTMVar)
@@ -49,7 +48,6 @@ superviseConnection = do
 runDB ::
      ( HasDbConnection r
      , MonadReader r m
-     , MonadError ThunderbunsException m
      , MonadIO m
      )
   => ConnectionIO a

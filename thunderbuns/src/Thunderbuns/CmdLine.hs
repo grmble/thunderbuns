@@ -34,10 +34,7 @@ parseCommandLine =
            (fullDesc <>
             header "thunderbuns - producing hot air for fun and profit" <>
             progDesc "Start a server or perform administrative commands"))
-    x <- runExceptT $ runHandler' $ runReaderT go r
-    case x of
-      Left err -> print err
-      Right () -> pure ()
+    runTB' go r
   where
     commandParser r =
       hsubparser
@@ -52,6 +49,7 @@ parseCommandLine =
          command
            "channel"
            (info channelParser (progDesc "Add or list channel(s)")))
+    genParser :: Parser (ReaderT Env Handler ())
     genParser =
       hsubparser
         (command
@@ -62,7 +60,7 @@ parseCommandLine =
            (info
               (pure (liftIO generatePurescript))
               (progDesc "Generate Purescript client code")))
-    generateSecret = liftIO (randomSecret >>= print)
+    userParser :: Parser (ReaderT Env Handler ())
     userParser =
       hsubparser
         (command
@@ -75,33 +73,41 @@ parseCommandLine =
            (info
               authUserParser
               (progDesc "Authorize the given USERNAME and PASSWORD")))
+    channelParser :: Parser (ReaderT Env Handler ())
     channelParser =
       hsubparser
         (command
            "add"
            (info addChannelParser (progDesc "Add a channel with NAME")) <>
          command "list" (info listChannelsParser (progDesc "List channels")))
-    nameAndPass =
-      UserPass <$> argument str (metavar "USERNAME") <*>
-      argument str (metavar "PASSWORD")
+    addUserParser :: Parser (ReaderT Env Handler ())
     addUserParser = do
       up <- nameAndPass
-      pure $ mapError (validateM up >>= Thunderbuns.Auth.addUser)
+      pure $ mapErrorT (validateM up >>= Thunderbuns.Auth.addUser)
+    authUserParser :: Parser (ReaderT Env Handler ())
     authUserParser = do
       up <- nameAndPass
       pure $
-        mapError
+        mapErrorT
           (validateM up >>= Thunderbuns.Auth.authenticate >>= liftIO . print)
+    addChannelParser :: Parser (ReaderT Env Handler ())
     addChannelParser = do
       c <- Channel <$> argument str (metavar "NAME")
-      pure $ mapError (validateM c >>= Thunderbuns.Channel.addChannel)
+      pure $ mapErrorT (validateM c >>= Thunderbuns.Channel.addChannel)
+    listChannelsParser :: Parser (ReaderT Env Handler ())
     listChannelsParser =
-      pure $ mapError Thunderbuns.Channel.list >>= traverse_ (liftIO . print)
+      pure $
+      mapErrorT Thunderbuns.Channel.list >>= traverse_ (liftIO . print)
+    dbParser :: Parser (ReaderT Env Handler ())
     dbParser =
       hsubparser
         (command
            "init"
            (info (pure initDB) (progDesc "Initialize the database")))
+    generateSecret = liftIO (randomSecret >>= print)
+    nameAndPass =
+      UserPass <$> argument str (metavar "USERNAME") <*>
+      argument str (metavar "PASSWORD")
 
 -- | Construct initial environment from Config
 --
@@ -115,16 +121,23 @@ initialEnv = do
           else INFO
   root <- rootLogger "thunderbuns" pri consoleHandler
   dbc <- newEmptyTMVarIO
-  let e = Env cfg root dbc
+  chan <- newBroadcastTChanIO
+  let e =
+        Env
+          { _envConfig = cfg
+          , _envLogger = root
+          , _envDBConn = dbc
+          , _envEventChannel = chan
+          }
   _ <- forkIO $ runReaderT superviseConnection e
   pure e
 
 runTB :: ReaderT Env Handler a -> Env -> IO (Either ServantErr a)
 runTB m e = runExceptT $ runHandler' $ runReaderT m e
 
-runTB' :: ReaderT Env Handler a -> IO a
-runTB' m = do
-  x <- initialEnv >>= runTB m
+runTB' :: ReaderT Env Handler a -> Env -> IO a
+runTB' m r = do
+  x <- runTB m r
   case x of
     Left err -> throwIO err
     Right a -> pure a

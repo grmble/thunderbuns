@@ -14,7 +14,6 @@ import Data.Maybe (fromJust)
 import Data.Semigroup ((<>))
 import qualified Data.Text.Encoding as T
 import qualified Data.Time.Clock.System as SC
-import Jose.Jwt
 import Test.Hspec
 import Thunderbuns.Auth
 import Thunderbuns.Auth.Types
@@ -137,7 +136,7 @@ spec = do
               Nothing $
             decodeToken bs
       print c
-      jwtSub c `shouldBe` Just "user"
+      jwtSub c `shouldBe` "user"
     it "authorization fails after token expires" $ do
       let bs = T.encodeUtf8 (token tk)
       let x =
