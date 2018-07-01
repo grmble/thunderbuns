@@ -29,7 +29,7 @@ html, body, #main, #bonsai-main  {
 
 .l-stretch {
     flex: 1 1 auto;
-    overflow: scroll;
+    overflow-y: scroll;
 }
 
 .l-box {

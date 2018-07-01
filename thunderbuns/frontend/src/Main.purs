@@ -9,15 +9,17 @@ import Bonsai.Storage (getItem)
 import Data.Lens (set)
 import Data.String as String
 import Effect (Effect)
+import Thunderfront.Controller (update)
 import Thunderfront.Types (Msg(..), activeChannel, channelList, channelName, emptyModel)
-import Thunderfront.Model (update)
 import Thunderfront.View (viewMain)
 
 main :: Effect Unit
 main = do
   hash <- effF $ window >>= document >>= locationHash
   jwt <- effF $ window >>= getItem "tbToken"
-  let model = set (channelList <<< activeChannel <<< channelName) (String.drop 2 hash) emptyModel
+  let model = if String.length hash > 2
+              then set (channelList <<< activeChannel <<< channelName) (String.drop 2 hash) emptyModel
+              else emptyModel
   prg <- dbgProgram (ElementId "main") update viewMain model window
   issueCommand prg (pure $ JwtTokenMsg jwt)
   pure unit

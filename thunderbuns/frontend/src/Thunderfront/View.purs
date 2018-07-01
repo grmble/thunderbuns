@@ -47,7 +47,7 @@ viewMenu model = do
           $ text str
     menuItemClasses current =
       if current == (view currentView model)
-          then "pure-menu-item pure-menu-item-selected"
+          then "pure-menu-item pure-menu-selected"
           else "pure-menu-item"
 
 viewCurrentView :: Model -> Markup Msg
@@ -71,17 +71,17 @@ viewChannels model = do
   where
     menuItemClasses current =
       if current == (view (channelList <<< activeChannel) model)
-          then "pure-menu-item pure-menu-item-selected"
+          then "pure-menu-item pure-menu-selected"
           else "pure-menu-item"
 
 viewActiveChannel :: Model -> Markup Msg
 viewActiveChannel model =
   div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-u-md-5-6" $ do
-    ul ! cls "l-plainlist l-stretch" $
+    ul ! id_ "messages" ! cls "l-plainlist l-stretch" $
       for_ (view (channelModel <<< messages) model) $ \(WT.Msg {msg})  ->
         li $ text msg
     div_ ! cls "pure-form" $
-      input ! cls "pure-u-1 pure-input" ! typ "text" ! value (view inputModel model)
+      input ! id_ "msgInput" ! cls "pure-u-1 pure-input" ! typ "text" ! value (view inputModel model)
         ! onInput MessageInputMsg ! onKeyEnter NewMessageMsg
 
 viewDebug :: Model -> Markup Msg

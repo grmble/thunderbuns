@@ -1,13 +1,13 @@
 -- | Model/Controller
-module Thunderfront.Model where
+module Thunderfront.Controller where
 
 import Prelude
 
 import Bonsai (Cmd, emitMessage, emittingTask, simpleTask, unitTask)
-import Bonsai.Debug
-import Bonsai.DOM (affF, defaultView, setLocationHash)
+import Bonsai.DOM (ElementId(..), affF, defaultView, elementById, focusElement, selectElementText, setLocationHash)
 import Bonsai.Forms.Model (FormMsg(..), lookup, updatePlain)
 import Bonsai.Storage (removeItem, setItem)
+import Bonsai.Types (delayUntilRendered)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.State (State, runState, get)
 import Control.Plus (empty)
@@ -19,11 +19,13 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple)
 import Effect (Effect)
 import Effect.Class (liftEffect)
+import Effect.Console (log)
 import Foreign (Foreign)
 import Thunderbuns.WebAPI (gDecodeEvent, getChannel, getChannelByChannel, postAuth, putChannelByChannel)
 import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.EventSource (EventSource, close, newEventSource, onMessage)
+import Thunderfront.Scroll (isScrolledDown, scrollDown)
 import Thunderfront.Types (Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, eventSource, inputModel, jwtToken, loginFormModel, messages)
 
 update :: Msg -> Model -> Tuple (Cmd Msg) Model
@@ -71,9 +73,27 @@ decodeEvent = map EventMsg <<< gDecodeEvent
 updateEvent :: WT.Msg -> State Model (Cmd Msg)
 updateEvent msg@(WT.Msg msgRec) = do
   active <- use (channelList <<< activeChannel)
-  when (active == msgRec.channel) $
-    modifying (channelModel <<< messages) (\ms -> snoc ms msg)
-  pure empty
+  case (active == msgRec.channel) of
+    false -> pure empty
+    true -> do
+      modifying (channelModel <<< messages) (\ms -> snoc ms msg)
+      scrollMessagesIfAtEnd
+
+scrollMessagesIfAtEnd :: State Model (Cmd Msg)
+scrollMessagesIfAtEnd =
+  pure $ emittingTask \ctx -> do
+    elem <- affF $ elementById (ElementId "messages") ctx.document
+    atEnd <- affF $ isScrolledDown elem
+    when atEnd $ do
+      delayUntilRendered ctx
+      affF $ scrollDown elem
+
+scrollAndFocus :: State Model (Cmd Msg)
+scrollAndFocus =
+  pure $ emittingTask \ctx -> do
+    delayUntilRendered ctx
+    _ <- affF $ elementById (ElementId "msgInput") ctx.document >>= focusElement >>= selectElementText
+    affF $ elementById (ElementId "messages") ctx.document >>= scrollDown
 
 updateLoginForm :: FormMsg -> State Model (Cmd Msg)
 updateLoginForm FormOK = do
@@ -95,7 +115,13 @@ updateChannelList cs = do
   assign (channelList <<< channels) cs
   c <- use (channelList <<< activeChannel)
   let c' = if elem c cs then c else (fromMaybe c $ head cs)
-  pure $ pure $ ActiveChannelMsg c'
+  -- pure $ pure $ ActiveChannelMsg c'
+  pure $ emittingTask \ctx -> do
+    liftEffect $ do
+      log ("Active channel:" <> show c)
+      log ("Incoming channels:" <> show cs)
+      log ("Elem?" <> show (elem c cs))
+    emitMessage ctx $ ActiveChannelMsg c'
 
 updateActiveChannel :: Channel -> State Model (Cmd Msg)
 updateActiveChannel c = do
@@ -111,7 +137,7 @@ updateActiveChannel c = do
 updateMessages :: Array WT.Msg -> State Model (Cmd Msg)
 updateMessages ms = do
   assign (channelModel <<< messages) ms
-  pure empty
+  scrollAndFocus
 
 addMessage :: String -> State Model (Cmd Msg)
 addMessage str = do
