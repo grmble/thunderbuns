@@ -2,6 +2,7 @@
 module Thunderbuns.WebAPI.Types where
 
 import Foreign.Generic (defaultOptions, genericEncode, genericDecode)
+import Data.Generic.Rep.Show (genericShow)
 import Foreign.Class (class Decode, class Encode)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Iso', Lens', Prism', lens, prism')
@@ -135,23 +136,29 @@ instance decodeChannel :: Decode Channel where decode = genericDecode (defaultOp
 instance encodeChannel :: Encode Channel where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })
 derive instance eqChannel :: Eq Channel
 derive instance ordChannel :: Ord Channel
+instance showChannel :: Show Channel where show = genericShow
 instance decodeMsg :: Decode Msg where decode = genericDecode (defaultOptions { unwrapSingleConstructors = true })
 instance encodeMsg :: Encode Msg where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })
 derive instance eqMsg :: Eq Msg
 derive instance ordMsg :: Ord Msg
+instance showMsg :: Show Msg where show = genericShow
 instance decodeNewMsg :: Decode NewMsg where decode = genericDecode (defaultOptions { unwrapSingleConstructors = true })
 instance encodeNewMsg :: Encode NewMsg where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })
 derive instance eqNewMsg :: Eq NewMsg
 derive instance ordNewMsg :: Ord NewMsg
+instance showNewMsg :: Show NewMsg where show = genericShow
 instance decodePriority :: Decode Priority where decode = genericDecode (defaultOptions { unwrapSingleConstructors = true })
 instance encodePriority :: Encode Priority where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })
 derive instance eqPriority :: Eq Priority
 derive instance ordPriority :: Ord Priority
+instance showPriority :: Show Priority where show = genericShow
 instance decodeUserPass :: Decode UserPass where decode = genericDecode (defaultOptions { unwrapSingleConstructors = true })
 instance encodeUserPass :: Encode UserPass where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })
 derive instance eqUserPass :: Eq UserPass
 derive instance ordUserPass :: Ord UserPass
+instance showUserPass :: Show UserPass where show = genericShow
 instance decodeToken :: Decode Token where decode = genericDecode (defaultOptions { unwrapSingleConstructors = true })
 instance encodeToken :: Encode Token where encode = genericEncode (defaultOptions { unwrapSingleConstructors = true })
 derive instance eqToken :: Eq Token
 derive instance ordToken :: Ord Token
+instance showToken :: Show Token where show = genericShow

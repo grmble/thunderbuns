@@ -13,6 +13,7 @@ newtype EventSource = EventSource Foreign
 
 derive instance newtypeEventSource :: Newtype EventSource _
 derive instance genericEventSource :: Generic EventSource _
+instance showEventSource :: Show EventSource where show = const "an EventSource"
 
 foreign import primitives
   :: { newEventSource :: Fn2 String String EventSource

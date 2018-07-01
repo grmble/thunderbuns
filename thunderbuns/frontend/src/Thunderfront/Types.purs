@@ -22,6 +22,7 @@ import Thunderfront.EventSource (EventSource)
 -- | It has
 -- |
 -- | * an optional jwt token
+-- | * an optional event source (because it needs a valid jwt token)
 -- | * a list of known channels, of which one is active
 -- | * state for the active channel (list of messages, ...)
 -- | * an input for new messages
@@ -41,8 +42,7 @@ newtype Model =
 
 derive instance newtypeModel :: Newtype Model _
 derive instance genericModel :: Generic Model _
--- instance showModel :: Show Model where
---   show = genericShow
+instance showModel :: Show Model where show = genericShow
 
 emptyModel :: Model
 emptyModel =
@@ -108,8 +108,8 @@ newtype ChannelModel =
 
 derive instance newtypeChannelModel :: Newtype ChannelModel _
 derive instance genericChannelModel :: Generic ChannelModel _
--- instance showChannelModel :: Show ChannelModel where
---  show = map (show <<< viewgenericShow
+instance showChannelModel :: Show ChannelModel where
+  show = show <<< view messages
 
 messages :: Lens' ChannelModel (Array WT.Msg)
 messages = _Newtype <<< prop (SProxy :: SProxy "messages")
@@ -174,6 +174,17 @@ data Msg
   | NewMessageMsg String
   | CurrentViewMsg CurrentView
 
+msgShow :: Msg -> String
+msgShow (JwtTokenMsg x) = "JwtTokenMsg (" <> show x <> ")"
+msgShow (EventSourceMsg x) = "EventSourceMsg (" <> show x <> ")"
+msgShow (MessageInputMsg x) = "MessageInputMsg (" <> show x <> ")"
+msgShow (LoginFormMsg _) = "a LoginFormMsg"
+msgShow (ChannelListMsg x) = "ChannelListMsg (" <> show x <> ")"
+msgShow (ActiveChannelMsg x) = "ActiveChannelMsg (" <> show x <> ")"
+msgShow (MessageMsg x) = "MessageMsg (" <> show x <> ")"
+msgShow (EventMsg x) = "EventMsg (" <> show x <> ")"
+msgShow (NewMessageMsg x) = "NewMessageMsg (" <> show x <> ")"
+msgShow (CurrentViewMsg x) = "CurrentViewMsg (" <> show x <> ")"
+
 derive instance genericMsg :: Generic Msg _
--- instance showMsg :: Show Msg where
---  show = genericShow
+instance showMsg :: Show Msg where show = msgShow

@@ -67,8 +67,12 @@ postprocessTypes = do
         eqInstance klass = "derive instance eq" <> klass <> " :: Eq " <> klass
         ordInstance klass =
           "derive instance ord" <> klass <> " :: Ord " <> klass
+        showInstance klass =
+          "instance show" <> klass <> " :: Show " <> klass <>
+          " where show = genericShow"
         imports' =
           [ "import Foreign.Generic (defaultOptions, genericEncode, genericDecode)"
+          , "import Data.Generic.Rep.Show (genericShow)"
           , "import Foreign.Class (class Decode, class Encode)"
           ]
         suffix' =
@@ -78,6 +82,7 @@ postprocessTypes = do
                , encodeInstance klass
                , eqInstance klass
                , ordInstance klass
+               , showInstance klass
                ])
             ["Channel", "Msg", "NewMsg", "Priority", "UserPass", "Token"]
 
