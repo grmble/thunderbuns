@@ -13,6 +13,7 @@ import Servant.Server (Handler)
 import Thunderbuns.Exception
 import Thunderbuns.Logging
 import Thunderbuns.Validate
+import UnliftIO.Exception (throwIO)
 
 instance HasLogger r => MonadTLogger (ReaderT r Handler) where
   localLogger n ctx action = unwrapRIO $ localLogger n ctx (WrappedRIO action)
@@ -47,8 +48,16 @@ mapError ma r = do
   ea <- liftIO $ runExceptT $ runReaderT ma r
   liftEither $ first tbServantErr ea
 
-mapErrorT :: ReaderT r (ExceptT ThunderbunsException IO) a -> ReaderT r Handler a
+mapErrorT ::
+     ReaderT r (ExceptT ThunderbunsException IO) a -> ReaderT r Handler a
 mapErrorT ma = ReaderT $ \r -> mapError ma r
+
+mapErrorIO :: ReaderT r (ExceptT ThunderbunsException IO) a -> r -> IO a
+mapErrorIO ma r = do
+  ea <- runExceptT $ runReaderT ma r
+  case ea of
+    Left err -> throwIO err
+    Right a -> pure a
 
 tbServantErr :: ThunderbunsException -> ServantErr
 tbServantErr (AuthorizationDenied _) =

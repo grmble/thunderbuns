@@ -1,7 +1,7 @@
-(A) events by lastEventId +backend
 (A) events endpoint should have it   s own metrics
 (A) EventSource in F instead of Effect +frontend
 (A) scroll down after adding message +frontend
+(A) frontend should detect when tokens expire and log itself out +frontend
 (B) loading of earlier messages when scrolling to top
 (B) scroll down on channel switch, focus input element after logging in/switching to channel view
 (B) show instance for FormMsg +bonsai
