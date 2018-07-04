@@ -1,5 +1,6 @@
 2018-07-01 EventSource in F instead of Effect +frontend +event
 2018-07-01 Flesh out Scroll.purs, move to DOM project +bonsai +dom
+2018-07-01 base64 urlsafe via atob +frontend +jwt https://stackoverflow.com/a/44528376/5808912
 2018-07-01 batch +cql4
 2018-07-01 channel groups for private messages and irc +frontend +groups
 2018-07-01 channel subscriptions +frontend +event
@@ -24,3 +25,9 @@
 2018-07-01 support discovery +nqs +backend
 2018-07-01 tests for validators: uuid and single line
 2018-07-01 typesafe form result +forms +frontend
+2018-07-01 use notifications? +error https://developer.mozilla.org/en-US/docs/Web/API/notification
+2018-07-04 get sensor into bonsai +bonsai
+2018-07-04 scrolling up: does not work when user holds scroll bar +frontend
+2018-07-04 scrolling up: pg-up/down should work from message input field +frontend
+x 2018-07-04 2018-07-04 scroll back in channel history +frontend
+x 2018-07-04 2018-07-04 sensor aka intelligent filter +frontend

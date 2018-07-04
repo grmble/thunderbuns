@@ -8,9 +8,10 @@ module Thunderbuns.Server.Event where
 import Control.Lens (view)
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson (encode)
-import Data.Binary.Builder (fromLazyByteString)
+import Data.Binary.Builder (fromLazyByteString, fromByteString)
 import Data.Foldable (for_)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Data.UUID (fromText)
 import Network.Wai.EventSource (ServerEvent(..), eventSourceAppIO)
 import Servant
@@ -54,6 +55,6 @@ toServerEvent :: Msg -> ServerEvent
 toServerEvent msg =
   ServerEvent
     { eventName = Nothing
-    , eventId = Nothing
+    , eventId = Just (fromByteString $ T.encodeUtf8 $ pk msg)
     , eventData = [fromLazyByteString $ encode msg]
     }

@@ -15,18 +15,20 @@ import Data.Array (head, snoc)
 import Data.Foldable (for_, elem)
 import Data.Lens (assign, modifying, use, view)
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Newtype (unwrap)
 import Data.Tuple (Tuple)
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Foreign (Foreign)
-import Thunderbuns.WebAPI (gDecodeEvent, getChannel, getChannelByChannel, postAuth, putChannelByChannel)
+import Thunderbuns.WebAPI (gDecodeEvent, getChannel, getChannelBefore, getChannelByChannel, postAuth, putChannelByChannel)
 import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.EventSource (EventSource, close, newEventSource, onMessage)
-import Thunderfront.Scroll (isScrolledDown, scrollDown)
-import Thunderfront.Types (Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, eventSource, inputModel, jwtToken, loginFormModel, messages)
+import Thunderfront.Scroll (isScrolledToBottom, scrollToBottom, scrollIntoViewTop)
+import Thunderfront.Sensor (prime)
+import Thunderfront.Types (Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, eventSource, inputModel, jwtToken, loginFormModel, messages, shouldLoadOlderSensor)
 
 update :: Msg -> Model -> Tuple (Cmd Msg) Model
 update (JwtTokenMsg x) = runState $ updateJwtToken x
@@ -35,7 +37,9 @@ update (LoginFormMsg x) = runState $ updateLoginForm x
 update (MessageInputMsg x) = runState $ updateInputForm x
 update (ChannelListMsg x) = runState $ updateChannelList x
 update (ActiveChannelMsg x) = runState $ updateActiveChannel x
+update GetChannelBeforeMsg = runState updateChannelBefore
 update (MessageMsg x) = runState $ updateMessages x
+update (MessagesBeforeMsg x) = runState $ updateMessagesBefore x
 update (EventMsg x) = runState $ updateEvent x
 update (NewMessageMsg x) = runState $ addMessage x
 update (CurrentViewMsg x) = runState $ assign currentView x *> pure empty
@@ -83,17 +87,18 @@ scrollMessagesIfAtEnd :: State Model (Cmd Msg)
 scrollMessagesIfAtEnd =
   pure $ emittingTask \ctx -> do
     elem <- affF $ elementById (ElementId "messages") ctx.document
-    atEnd <- affF $ isScrolledDown elem
+    atEnd <- affF $ isScrolledToBottom elem
     when atEnd $ do
       delayUntilRendered ctx
-      affF $ scrollDown elem
+      affF $ scrollToBottom elem
 
-scrollAndFocus :: State Model (Cmd Msg)
-scrollAndFocus =
+primeScrollAndFocus :: State Model (Cmd Msg)
+primeScrollAndFocus =
   pure $ emittingTask \ctx -> do
     delayUntilRendered ctx
+    liftEffect $ prime shouldLoadOlderSensor
     _ <- affF $ elementById (ElementId "msgInput") ctx.document >>= focusElement >>= selectElementText
-    affF $ elementById (ElementId "messages") ctx.document >>= scrollDown
+    affF $ elementById (ElementId "messages") ctx.document >>= scrollToBottom
 
 updateLoginForm :: FormMsg -> State Model (Cmd Msg)
 updateLoginForm FormOK = do
@@ -133,11 +138,36 @@ updateActiveChannel c = do
     affF $ setLocationHash ("#!" <> n) doc
     pure $ MessageMsg cs
 
+updateChannelBefore :: State Model (Cmd Msg)
+updateChannelBefore = do
+  c <- use (channelList <<< activeChannel)
+  last <- head <$> use (channelModel <<< messages)
+  s <- get
+  pure $ emittingTask $ \ctx -> do
+    let n = view channelName c
+    case last of
+      Nothing -> pure unit
+      Just (WT.Msg last') -> do
+        ms <- runReaderT (getChannelBefore n last'.pk) s
+        emitMessage ctx $ MessagesBeforeMsg ms
 
 updateMessages :: Array WT.Msg -> State Model (Cmd Msg)
 updateMessages ms = do
   assign (channelModel <<< messages) ms
-  scrollAndFocus
+  primeScrollAndFocus
+
+updateMessagesBefore :: Array WT.Msg -> State Model (Cmd Msg)
+updateMessagesBefore ms = do
+  old <- use (channelModel <<< messages)
+  let last = head old
+  modifying (channelModel <<< messages) (ms <> _)
+  pure $ emittingTask \ctx -> do
+    delayUntilRendered ctx
+    liftEffect $ prime shouldLoadOlderSensor
+    maybe
+      (pure unit)
+      (\msg -> affF $ elementById (ElementId msg.pk) ctx.document >>= scrollIntoViewTop true)
+      (unwrap <$> last)
 
 addMessage :: String -> State Model (Cmd Msg)
 addMessage str = do

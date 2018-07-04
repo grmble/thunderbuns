@@ -3,6 +3,7 @@ module Thunderfront.Types where
 
 import Prelude
 
+import Bonsai.DOM (Element(..), effF, failNullOrUndefined)
 import Bonsai.Forms (FormMsg, FormModel)
 import Bonsai.Forms.Model (emptyFormModel)
 import Data.Generic.Rep (class Generic)
@@ -13,9 +14,13 @@ import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
+import Foreign (Foreign, F)
+import Foreign.Index (readProp)
 import Thunderbuns.WebAPI.Types (Channel(..), _Channel)
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.EventSource (EventSource)
+import Thunderfront.Scroll (clientHeight, scrollHeight, scrollTop)
+import Thunderfront.Sensor (Sensor, differentialSensor)
 
 -- | Main application model
 -- |
@@ -169,11 +174,14 @@ data Msg
   | LoginFormMsg FormMsg
   | ChannelListMsg (Array Channel)
   | ActiveChannelMsg Channel
+  | GetChannelBeforeMsg
   | MessageMsg (Array WT.Msg)
+  | MessagesBeforeMsg (Array WT.Msg)
   | EventMsg WT.Msg
   | NewMessageMsg String
   | CurrentViewMsg CurrentView
 
+-- XXX generic instance for FormMsg ...
 msgShow :: Msg -> String
 msgShow (JwtTokenMsg x) = "JwtTokenMsg (" <> show x <> ")"
 msgShow (EventSourceMsg x) = "EventSourceMsg (" <> show x <> ")"
@@ -181,10 +189,30 @@ msgShow (MessageInputMsg x) = "MessageInputMsg (" <> show x <> ")"
 msgShow (LoginFormMsg _) = "a LoginFormMsg"
 msgShow (ChannelListMsg x) = "ChannelListMsg (" <> show x <> ")"
 msgShow (ActiveChannelMsg x) = "ActiveChannelMsg (" <> show x <> ")"
+msgShow GetChannelBeforeMsg = "GetChannelBeforeMsg"
 msgShow (MessageMsg x) = "MessageMsg (" <> show x <> ")"
+msgShow (MessagesBeforeMsg x) = "MessagesBeforeMsg (" <> show x <> ")"
 msgShow (EventMsg x) = "EventMsg (" <> show x <> ")"
 msgShow (NewMessageMsg x) = "NewMessageMsg (" <> show x <> ")"
 msgShow (CurrentViewMsg x) = "CurrentViewMsg (" <> show x <> ")"
 
 derive instance genericMsg :: Generic Msg _
 instance showMsg :: Show Msg where show = msgShow
+
+
+--
+--
+-- scrolling sensor
+--
+-- view and crontroller need this ...
+--
+shouldLoadOlderMessages :: Foreign -> F Boolean
+shouldLoadOlderMessages ev = do
+  target <- "target" `readProp` ev >>= failNullOrUndefined "target"
+  posY <- scrollTop (Element target)
+  ch <- clientHeight (Element target)
+  sh <- scrollHeight (Element target)
+  pure $ (ch < sh) && (posY == 0.0)
+
+shouldLoadOlderSensor :: Sensor
+shouldLoadOlderSensor = differentialSensor (effF <$> shouldLoadOlderMessages)

@@ -71,3 +71,8 @@ tbServantErr (ValidationException ms _) =
 validateTB ::
      (MonadError ThunderbunsException m, DefaultValidator a) => a -> m (V a)
 validateTB a = liftEither $ first validationException $ validate a
+
+validateTB' ::
+  (MonadError ThunderbunsException m) => Validator a -> a -> m (V a)
+validateTB' va a =
+  liftEither $ first validationException $ validate' Nothing va a

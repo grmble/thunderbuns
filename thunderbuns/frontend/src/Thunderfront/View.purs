@@ -2,15 +2,18 @@ module Thunderfront.View where
 
 import Prelude
 
+import Bonsai (Cmd)
 import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!))
 import Bonsai.Html.Attributes (cls, id_, href, typ, value)
-import Bonsai.Html.Events (onClickPreventDefault, onInput, onKeyEnter)
+import Bonsai.Html.Events (onClickPreventDefault, onInput, onKeyEnter, preventDefaultStopPropagation)
+import Bonsai.VirtualDom (filterOn)
 import Data.Foldable (for_)
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
+import Foreign (Foreign, F)
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.Forms.Login (loginForm)
-import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, inputModel, jwtToken, messages)
+import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, inputModel, jwtToken, messages, shouldLoadOlderSensor)
 
 viewMain :: Model -> VNode Msg
 viewMain model = do
@@ -77,12 +80,20 @@ viewChannels model = do
 viewActiveChannel :: Model -> Markup Msg
 viewActiveChannel model =
   div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-u-md-5-6" $ do
-    ul ! id_ "messages" ! cls "l-plainlist l-stretch" $
-      for_ (view (channelModel <<< messages) model) $ \(WT.Msg {msg})  ->
-        li $ text msg
+    ul ! id_ "messages"
+      ! cls "l-plainlist l-stretch"
+      ! filterOn preventDefaultStopPropagation "scroll" shouldLoadOlderSensor.filter loadOlderMessagesCmd $
+      for_ (view (channelModel <<< messages) model) $ \(WT.Msg {pk, msg, user})  ->
+        li ! id_ pk $ do
+          span ! cls "l-user" $ text user
+          text ": "
+          span $ text msg
     div_ ! cls "pure-form" $
       input ! id_ "msgInput" ! cls "pure-u-1 pure-input" ! typ "text" ! value (view inputModel model)
         ! onInput MessageInputMsg ! onKeyEnter NewMessageMsg
+
+loadOlderMessagesCmd :: Foreign -> F (Cmd Msg)
+loadOlderMessagesCmd = const $ pure $ pure GetChannelBeforeMsg
 
 viewDebug :: Model -> Markup Msg
 viewDebug model = do

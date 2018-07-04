@@ -148,6 +148,17 @@ getChannelByChannel channel = do
                    , content = Nothing }
   gDecodeArray rsp.response
 
+getChannelBefore :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => String -> String -> m (Array Msg)
+getChannelBefore channel created = do
+  url <- requestURL "channel/"
+  auth <- authHeader
+  rsp <- liftAff $ affjax ARs.json $
+    defaultRequest { method = Left GET
+                   , url = url <> urlPath channel <> "/before/" <> urlPath created
+                   , headers = [ RH.RequestHeader "authorization" auth ]
+                   , content = Nothing }
+  gDecodeArray rsp.response
+
 putChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => NewMsg -> String -> m Unit
 putChannelByChannel body channel = do
   url <- requestURL "channel/"

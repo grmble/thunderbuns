@@ -7,8 +7,8 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import qualified Data.Text as T
 import Data.Traversable
-import Data.UUID (fromText, toText)
-import Data.UUID.V1
+import Data.UUID (UUID, fromText, toText)
+import Data.UUID.V1 (nextUUID)
 import Database.CQL4
 import Thunderbuns.Auth.Types (Username)
 import Thunderbuns.Channel.Types
@@ -26,6 +26,7 @@ class Monad m =>
   list :: m [Channel] -- ^ list of all channels
   addChannel :: V Channel -> m () -- ^ add a new channel
   messages :: V Channel -> m [Msg] -- ^ messages in the channel
+  messagesBefore :: V Channel -> V UUID -> m [Msg] -- ^ messages in the channel before message pk
   addMessage :: V Msg -> m () -- ^ add a new message
   mkMsg :: Channel -> Username -> T.Text -> m Msg -- ^ create msg (timeuuid!)
 
@@ -44,8 +45,16 @@ instance (HasDbConnection r, HasEventChannel r, HasLogger r) =>
       [TextValue (channelName (unV c))]
   messages c =
     runDB $ do
-      let cql = "select created, user, msg from tb.msg where channel=? limit 25"
+      let cql = "select created, user, msg from tb.msg where channel=? limit 50"
       rows <- executeQuery Quorum cql [TextValue (channelName (unV c))]
+      for
+        (reverse rows)
+        (extractRow
+           (Msg <$> pure (unV c) <*> fmap toText extract <*> extract <*> extract))
+  messagesBefore c pk =
+    runDB $ do
+      let cql = "select created, user, msg from tb.msg where channel=? and created<? limit 10"
+      rows <- executeQuery Quorum cql [TextValue (channelName (unV c)), TimeUUIDValue (unV pk)]
       for
         (reverse rows)
         (extractRow
