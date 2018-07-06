@@ -12,6 +12,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(SProxy))
 import Prim (String)
+import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID)
 
 import Prelude
 
@@ -31,7 +32,7 @@ _Channel = _Newtype
 newtype Msg =
     Msg {
       channel :: Channel
-    , created :: String
+    , created :: OrderedUUID
     , user :: String
     , msg :: String
     }
@@ -40,7 +41,7 @@ derive instance genericMsg :: Generic Msg _
 derive instance newtypeMsg :: Newtype Msg _
 
 --------------------------------------------------------------------------------
-_Msg :: Iso' Msg { channel :: Channel, created :: String, user :: String, msg :: String}
+_Msg :: Iso' Msg { channel :: Channel, created :: OrderedUUID, user :: String, msg :: String}
 _Msg = _Newtype
 
 --------------------------------------------------------------------------------

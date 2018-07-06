@@ -8,14 +8,16 @@ import Bonsai.Forms (FormMsg, FormModel)
 import Bonsai.Forms.Model (emptyFormModel)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Lens (Lens', view)
+import Data.Lens (Lens')
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
+import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Foreign (Foreign, F)
 import Foreign.Index (readProp)
+import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID)
 import Thunderbuns.WebAPI.Types (Channel(..), _Channel)
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.EventSource (EventSource)
@@ -39,8 +41,9 @@ newtype Model =
   Model
   { jwtToken :: Maybe String
   , eventSource :: Maybe EventSource
-  , channelList :: ChannelList
-  , channelModel :: ChannelModel
+  , activeChannel :: Channel
+  , channels :: Array Channel
+  , messages :: M.Map OrderedUUID WT.Msg
   , formModels :: FormModels
   , currentView :: CurrentView
   }
@@ -53,9 +56,9 @@ emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
         , eventSource: Nothing
-        , channelList: ChannelList { activeChannel: (Channel { channelName: "Default" })
-                                   , channels: [Channel { channelName: "Default" } ]}
-        , channelModel: ChannelModel { messages: []}
+        , activeChannel: (Channel { channelName: "Default" })
+        , channels: [Channel { channelName: "Default" } ]
+        , messages: M.empty
         , formModels: FormModels { inputModel: ""
                                  , loginFormModel: emptyFormModel}
         , currentView: ChannelView }
@@ -67,56 +70,22 @@ jwtToken = _Newtype <<< prop (SProxy :: SProxy "jwtToken")
 eventSource :: Lens' Model (Maybe EventSource)
 eventSource = _Newtype <<< prop (SProxy :: SProxy "eventSource")
 
-channelList :: Lens' Model ChannelList
-channelList = _Newtype <<< prop (SProxy :: SProxy "channelList")
-
-channelModel :: Lens' Model ChannelModel
-channelModel = _Newtype <<< prop (SProxy :: SProxy "channelModel")
-
 formModels :: Lens' Model FormModels
 formModels = _Newtype <<< prop (SProxy :: SProxy "formModels")
 
 currentView :: Lens' Model CurrentView
 currentView = _Newtype <<< prop (SProxy :: SProxy "currentView")
 
--- | Channel list
--- |
--- | Models the list (or tree) of known channels
--- | and the currently active one
-newtype ChannelList =
-  ChannelList
-  { activeChannel :: Channel
-  , channels :: Array Channel
-  }
-
-derive instance newtypeChannelList :: Newtype ChannelList _
-derive instance genericChannelList :: Generic ChannelList _
-instance showChannelList :: Show ChannelList where
-  show x = show (map (view channelName) (view channels x))
-
 channelName :: Lens' Channel String
 channelName = _Channel <<< prop (SProxy :: SProxy "channelName")
 
-activeChannel :: Lens' ChannelList Channel
+activeChannel :: Lens' Model Channel
 activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
 
-channels :: Lens' ChannelList (Array Channel)
+channels :: Lens' Model (Array Channel)
 channels = _Newtype <<< prop (SProxy :: SProxy "channels")
 
--- | Channel Model
--- |
--- | Models the active channel where the messages are shown
-newtype ChannelModel =
-  ChannelModel
-  { messages :: Array WT.Msg
-  }
-
-derive instance newtypeChannelModel :: Newtype ChannelModel _
-derive instance genericChannelModel :: Generic ChannelModel _
-instance showChannelModel :: Show ChannelModel where
-  show = show <<< view messages
-
-messages :: Lens' ChannelModel (Array WT.Msg)
+messages :: Lens' Model (M.Map OrderedUUID WT.Msg)
 messages = _Newtype <<< prop (SProxy :: SProxy "messages")
 
 -- | Form models for the unique forms
@@ -176,7 +145,7 @@ data Msg
   | ActiveChannelMsg Channel
   | GetChannelBeforeMsg
   | MessageMsg (Array WT.Msg)
-  | MessagesBeforeMsg (Array WT.Msg)
+  | MessageBeforeMsg (Array WT.Msg)
   | EventMsg WT.Msg
   | NewMessageMsg String
   | CurrentViewMsg CurrentView
@@ -191,7 +160,7 @@ msgShow (ChannelListMsg x) = "ChannelListMsg (" <> show x <> ")"
 msgShow (ActiveChannelMsg x) = "ActiveChannelMsg (" <> show x <> ")"
 msgShow GetChannelBeforeMsg = "GetChannelBeforeMsg"
 msgShow (MessageMsg x) = "MessageMsg (" <> show x <> ")"
-msgShow (MessagesBeforeMsg x) = "MessagesBeforeMsg (" <> show x <> ")"
+msgShow (MessageBeforeMsg x) = "MessageBeforeMsg (" <> show x <> ")"
 msgShow (EventMsg x) = "EventMsg (" <> show x <> ")"
 msgShow (NewMessageMsg x) = "NewMessageMsg (" <> show x <> ")"
 msgShow (CurrentViewMsg x) = "CurrentViewMsg (" <> show x <> ")"

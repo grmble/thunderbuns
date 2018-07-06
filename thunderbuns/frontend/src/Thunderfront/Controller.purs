@@ -11,24 +11,25 @@ import Bonsai.Types (delayUntilRendered)
 import Control.Monad.Reader (runReaderT)
 import Control.Monad.State (State, runState, get)
 import Control.Plus (empty)
-import Data.Array (head, snoc)
+import Data.Array as Array
 import Data.Foldable (for_, elem)
 import Data.Lens (assign, modifying, use, view)
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
-import Data.Tuple (Tuple)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Foreign (Foreign)
 import Thunderbuns.WebAPI (gDecodeEvent, getChannel, getChannelBefore, getChannelByChannel, postAuth, putChannelByChannel)
+import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID)
 import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.EventSource (EventSource, close, newEventSource, onMessage)
 import Thunderfront.Scroll (isScrolledToBottom, scrollToBottom, scrollIntoViewTop)
 import Thunderfront.Sensor (prime)
-import Thunderfront.Types (Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, eventSource, inputModel, jwtToken, loginFormModel, messages, shouldLoadOlderSensor)
+import Thunderfront.Types (Model, Msg(..), activeChannel, channelName, channels, currentView, eventSource, inputModel, jwtToken, loginFormModel, messages, shouldLoadOlderSensor)
 
 update :: Msg -> Model -> Tuple (Cmd Msg) Model
 update (JwtTokenMsg x) = runState $ updateJwtToken x
@@ -38,11 +39,15 @@ update (MessageInputMsg x) = runState $ updateInputForm x
 update (ChannelListMsg x) = runState $ updateChannelList x
 update (ActiveChannelMsg x) = runState $ updateActiveChannel x
 update GetChannelBeforeMsg = runState updateChannelBefore
-update (MessageMsg x) = runState $ updateMessages x
-update (MessagesBeforeMsg x) = runState $ updateMessagesBefore x
+update (MessageMsg x) = runState $ setMessages (messageMap x)
+update (MessageBeforeMsg x) = runState $ mergeMessages (messageMap x)
 update (EventMsg x) = runState $ updateEvent x
 update (NewMessageMsg x) = runState $ addMessage x
 update (CurrentViewMsg x) = runState $ assign currentView x *> pure empty
+
+messageMap :: Array WT.Msg -> M.Map OrderedUUID WT.Msg
+messageMap ms =
+  M.fromFoldable (map (\m -> Tuple (unwrap m).created m) ms)
 
 updateJwtToken :: Maybe String -> State Model (Cmd Msg)
 updateJwtToken Nothing = do
@@ -76,11 +81,11 @@ decodeEvent = map EventMsg <<< gDecodeEvent
 
 updateEvent :: WT.Msg -> State Model (Cmd Msg)
 updateEvent msg@(WT.Msg msgRec) = do
-  active <- use (channelList <<< activeChannel)
+  active <- use activeChannel
   case (active == msgRec.channel) of
     false -> pure empty
     true -> do
-      modifying (channelModel <<< messages) (\ms -> snoc ms msg)
+      modifying messages (M.insert msgRec.created msg)
       scrollMessagesIfAtEnd
 
 scrollMessagesIfAtEnd :: State Model (Cmd Msg)
@@ -117,9 +122,9 @@ updateLoginForm msg = do
 
 updateChannelList :: Array Channel -> State Model (Cmd Msg)
 updateChannelList cs = do
-  assign (channelList <<< channels) cs
-  c <- use (channelList <<< activeChannel)
-  let c' = if elem c cs then c else (fromMaybe c $ head cs)
+  assign channels cs
+  c <- use activeChannel
+  let c' = if elem c cs then c else (fromMaybe c $ Array.head cs)
   -- pure $ pure $ ActiveChannelMsg c'
   pure $ emittingTask \ctx -> do
     liftEffect $ do
@@ -130,53 +135,56 @@ updateChannelList cs = do
 
 updateActiveChannel :: Channel -> State Model (Cmd Msg)
 updateActiveChannel c = do
-  assign (channelList <<< activeChannel) c
+  assign activeChannel c
   s <- get
   pure $ simpleTask $ \doc -> do
     let n = view channelName c
-    cs <- runReaderT (getChannelByChannel n) s
+    cs <- runReaderT (getChannelByChannel c) s
     affF $ setLocationHash ("#!" <> n) doc
     pure $ MessageMsg cs
 
 updateChannelBefore :: State Model (Cmd Msg)
 updateChannelBefore = do
-  c <- use (channelList <<< activeChannel)
-  last <- head <$> use (channelModel <<< messages)
+  c <- use activeChannel
+  oldest <- oldestUUID
   s <- get
   pure $ emittingTask $ \ctx -> do
-    let n = view channelName c
-    case last of
+    case oldest of
       Nothing -> pure unit
-      Just (WT.Msg last') -> do
-        ms <- runReaderT (getChannelBefore n last'.created) s
-        emitMessage ctx $ MessagesBeforeMsg ms
+      Just created -> do
+        ms <- runReaderT (getChannelBefore c created) s
+        emitMessage ctx $ MessageBeforeMsg ms
 
-updateMessages :: Array WT.Msg -> State Model (Cmd Msg)
-updateMessages ms = do
-  assign (channelModel <<< messages) ms
+oldestUUID :: State Model (Maybe OrderedUUID)
+oldestUUID = do
+  ms <- use messages
+  pure $ _.key <$> (M.findMin ms)
+
+setMessages :: M.Map OrderedUUID WT.Msg -> State Model (Cmd Msg)
+setMessages ms = do
+  assign messages ms
   primeScrollAndFocus
 
-updateMessagesBefore :: Array WT.Msg -> State Model (Cmd Msg)
-updateMessagesBefore ms = do
-  old <- use (channelModel <<< messages)
-  let last = head old
-  modifying (channelModel <<< messages) (ms <> _)
-  pure $ emittingTask \ctx -> do
-    delayUntilRendered ctx
-    liftEffect $ prime shouldLoadOlderSensor
-    maybe
-      (pure unit)
-      (\msg -> affF $ elementById (ElementId msg.created) ctx.document >>= scrollIntoViewTop true)
-      (unwrap <$> last)
+mergeMessages :: M.Map OrderedUUID WT.Msg -> State Model (Cmd Msg)
+mergeMessages ms = do
+  oldest <- oldestUUID
+  modifying messages (ms <> _)
+  case oldest of
+    Nothing -> pure empty
+    Just oldestId -> do
+      pure $ emittingTask \ctx -> do
+        delayUntilRendered ctx
+        liftEffect $ prime shouldLoadOlderSensor
+        affF $ elementById (ElementId (unwrap oldestId)) ctx.document >>= scrollIntoViewTop true
+
 
 addMessage :: String -> State Model (Cmd Msg)
 addMessage str = do
-  c <- use (channelList <<< activeChannel)
-  let cn = view channelName c
+  c <- use activeChannel
   s <- get
   pure $ emittingTask $ \ctx -> do
     -- yes, reqBody -> channel
-    runReaderT (putChannelByChannel (WT.NewMsg { msg: str} ) cn) s
+    runReaderT (putChannelByChannel (WT.NewMsg { msg: str} ) c) s
     -- emitMessage ctx $ ActiveChannelMsg c
     emitMessage ctx $ MessageInputMsg ""
 

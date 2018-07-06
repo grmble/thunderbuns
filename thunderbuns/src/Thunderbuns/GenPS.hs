@@ -112,7 +112,7 @@ fixOrderedUUID = do
   typeName ^== "OrderedUUID"
   typeModule ^== "Thunderbuns.OrderedUUID"
   -- no import necessary from string ... just import something
-  TypeInfo "purescript-prims" "Prim" "String" <$> psTypeParameters
+  TypeInfo "purescript-prims" "Thunderbuns.WebAPI.OrderedUUID" "OrderedUUID" <$> psTypeParameters
 
 
 myBridge :: BridgePart

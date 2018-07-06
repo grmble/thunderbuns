@@ -29,8 +29,8 @@
 2018-07-04 get sensor into bonsai +bonsai
 2018-07-04 scrolling up: does not work when user holds scroll bar +frontend
 2018-07-04 scrolling up: pg-up/down should work from message input field +frontend
-2018-07-06 newtype ordereduuid in +frontend
-2018-07-06 store messages in map sorted by ordereduuid +frontend
+x 2018-07-06 2018-07-06 store messages in map sorted by ordereduuid +frontend
 x 2018-07-04 2018-07-04 scroll back in channel history +frontend
 x 2018-07-04 2018-07-04 sensor aka intelligent filter +frontend
 x 2018-07-06 2018-07-06 represent timeuuid as something sortable on the javascript side +backend
+x 2018-07-06 2018-07-06 newtype ordereduuid in +frontend

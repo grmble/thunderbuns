@@ -10,10 +10,11 @@ import Bonsai.VirtualDom (filterOn)
 import Data.Foldable (for_)
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (unwrap)
 import Foreign (Foreign, F)
 import Thunderbuns.WebAPI.Types as WT
 import Thunderfront.Forms.Login (loginForm)
-import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelList, channelModel, channelName, channels, currentView, inputModel, jwtToken, messages, shouldLoadOlderSensor)
+import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelName, channels, currentView, inputModel, jwtToken, messages, shouldLoadOlderSensor)
 
 viewMain :: Model -> VNode Msg
 viewMain model = do
@@ -66,14 +67,14 @@ viewChannels model = do
   div_ ! id_ "channels" ! cls "l-box pure-u-1-3 pure-u-md-1-6 pure-menu" $ do
     span ! cls "pure-menu-heading" $ text "Channels"
     ul ! cls "l-plainlist" $
-    for_ (view (channelList <<< channels) model) $ \c -> do
+    for_ (view channels model) $ \c -> do
       li ! cls (menuItemClasses c) $
         a ! cls "pure-menu-link" ! href "#"
           ! onClickPreventDefault (ActiveChannelMsg c)
           $ text (view channelName c)
   where
     menuItemClasses current =
-      if current == (view (channelList <<< activeChannel) model)
+      if current == (view activeChannel model)
           then "pure-menu-item pure-menu-selected"
           else "pure-menu-item"
 
@@ -83,8 +84,8 @@ viewActiveChannel model =
     ul ! id_ "messages"
       ! cls "l-plainlist l-stretch"
       ! filterOn preventDefaultStopPropagation "scroll" shouldLoadOlderSensor.filter loadOlderMessagesCmd $
-      for_ (view (channelModel <<< messages) model) $ \(WT.Msg {created, msg, user})  ->
-        li ! id_ created $ do
+      for_ (view messages model) $ \(WT.Msg {created, msg, user})  ->
+        li ! id_ (unwrap created) $ do
           span ! cls "l-user" $ text user
           text ": "
           span $ text msg

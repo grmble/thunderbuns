@@ -39,7 +39,8 @@ import Network.HTTP.Affjax (URL, affjax, defaultRequest, post)
 import Network.HTTP.Affjax.Request as ARq
 import Network.HTTP.Affjax.Response as ARs
 import Network.HTTP.RequestHeader as RH
-import Thunderbuns.WebAPI.Types (Channel, Msg, NewMsg, Priority, Token, UserPass)
+import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID(..))
+import Thunderbuns.WebAPI.Types (Channel(..), Msg, NewMsg, Priority, Token, UserPass)
 import Thunderfront.Types (Model)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -137,35 +138,35 @@ putChannel body = do
   pure unit
 
 
-getChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => String -> m (Array Msg)
-getChannelByChannel channel = do
+getChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> m (Array Msg)
+getChannelByChannel (Channel channel) = do
   url <- requestURL "channel/"
   auth <- authHeader
   rsp <- liftAff $ affjax ARs.json $
     defaultRequest { method = Left GET
-                   , url = url <> urlPath channel
+                   , url = url <> urlPath channel.channelName
                    , headers = [ RH.RequestHeader "authorization" auth ]
                    , content = Nothing }
   gDecodeArray rsp.response
 
-getChannelBefore :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => String -> String -> m (Array Msg)
-getChannelBefore channel created = do
+getChannelBefore :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> OrderedUUID -> m (Array Msg)
+getChannelBefore (Channel channel) (OrderedUUID created) = do
   url <- requestURL "channel/"
   auth <- authHeader
   rsp <- liftAff $ affjax ARs.json $
     defaultRequest { method = Left GET
-                   , url = url <> urlPath channel <> "/before/" <> urlPath created
+                   , url = url <> urlPath channel.channelName <> "/before/" <> urlPath created
                    , headers = [ RH.RequestHeader "authorization" auth ]
                    , content = Nothing }
   gDecodeArray rsp.response
 
-putChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => NewMsg -> String -> m Unit
-putChannelByChannel body channel = do
+putChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => NewMsg -> Channel -> m Unit
+putChannelByChannel body (Channel channel) = do
   url <- requestURL "channel/"
   auth <- authHeader
   _ <- liftAff $ affjax ARs.ignore $
        defaultRequest { method = Left PUT
-                   , url = url <> urlPath channel
+                   , url = url <> urlPath channel.channelName
                    , headers = [ RH.RequestHeader "authorization" auth ]
                    , content = Just (ARq.json $ gEncode body) }
   pure unit

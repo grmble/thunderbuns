@@ -65,7 +65,7 @@ $(makePrisms ''OrderedUUID)
 instance FromHttpApiData OrderedUUID where
   parseQueryParam s =
     if T.null s
-    then fail "empty string - not a uuid"
+    then Left "empty - not a uuid"
     else OrderedUUID . T.encodeUtf8 <$> parseQueryParam s
 
 instance ToHttpApiData OrderedUUID where
