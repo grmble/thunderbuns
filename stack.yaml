@@ -4,6 +4,7 @@
 resolver: lts-11.13
 
 packages:
+- d64
 - hexdump-xxd
 - picolens
 - tcql4

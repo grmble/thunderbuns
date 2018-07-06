@@ -106,8 +106,17 @@ fixHashmap = do
   typeModule ^== "Data.HashMap" <|> typeModule ^== "Data.HashMap.Base"
   TypeInfo "purescript-maps" "Data.Map" "Map" <$> psTypeParameters
 
+-- OrderedUUID -> String
+fixOrderedUUID :: BridgePart
+fixOrderedUUID = do
+  typeName ^== "OrderedUUID"
+  typeModule ^== "Thunderbuns.OrderedUUID"
+  -- no import necessary from string ... just import something
+  TypeInfo "purescript-prims" "Prim" "String" <$> psTypeParameters
+
+
 myBridge :: BridgePart
-myBridge = defaultBridge <|> fixTypesModule <|> fixHashmap
+myBridge = defaultBridge <|> fixTypesModule <|> fixHashmap <|> fixOrderedUUID
 
 data MyBridge
 

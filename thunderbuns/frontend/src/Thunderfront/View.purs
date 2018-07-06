@@ -83,8 +83,8 @@ viewActiveChannel model =
     ul ! id_ "messages"
       ! cls "l-plainlist l-stretch"
       ! filterOn preventDefaultStopPropagation "scroll" shouldLoadOlderSensor.filter loadOlderMessagesCmd $
-      for_ (view (channelModel <<< messages) model) $ \(WT.Msg {pk, msg, user})  ->
-        li ! id_ pk $ do
+      for_ (view (channelModel <<< messages) model) $ \(WT.Msg {created, msg, user})  ->
+        li ! id_ created $ do
           span ! cls "l-user" $ text user
           text ": "
           span $ text msg

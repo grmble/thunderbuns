@@ -49,10 +49,12 @@ import Control.Monad.Reader
 import Data.Attoparsec.Text
 import Data.Char
 import qualified Data.List as L
+import Data.Maybe (isJust)
 import qualified Data.Text as T
 import Thunderbuns.Exception
+import Thunderbuns.OrderedUUID (OrderedUUID, toUUID)
 import UnliftIO.Exception (throwIO)
-import Data.UUID (fromText)
+import Data.UUID.Util (extractTime)
 
 -- | A newtype for a validated value.
 newtype V a =
@@ -193,12 +195,12 @@ singleLineValidator str a = parsingValidator (fst <$> match singleLineParser) st
     msg = "no characters in the ascii control range"
     singleLineParser = Data.Attoparsec.Text.takeWhile (toEnum 0x20 <=) <?> msg
 
--- | UUID Validator - must be valid UUID
-uuidValidator :: Validator T.Text
+-- | OrderedUUID Validator - must be valid UUID
+uuidValidator :: Validator OrderedUUID
 uuidValidator str a =
-  maybe (mkFailure str ("not a valid uuid: " ++ T.unpack a))
-        (const $ pure a)
-        (fromText a)
+  if isJust (extractTime $ toUUID a)
+    then pure a
+    else mkFailure str ("not a v1 uuid: " ++ show a)
 
 -- | Combine validator messages
 appmsg :: Maybe String -> String -> Maybe String

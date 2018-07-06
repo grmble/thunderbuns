@@ -31,7 +31,7 @@ _Channel = _Newtype
 newtype Msg =
     Msg {
       channel :: Channel
-    , pk :: String
+    , created :: String
     , user :: String
     , msg :: String
     }
@@ -40,7 +40,7 @@ derive instance genericMsg :: Generic Msg _
 derive instance newtypeMsg :: Newtype Msg _
 
 --------------------------------------------------------------------------------
-_Msg :: Iso' Msg { channel :: Channel, pk :: String, user :: String, msg :: String}
+_Msg :: Iso' Msg { channel :: Channel, created :: String, user :: String, msg :: String}
 _Msg = _Newtype
 
 --------------------------------------------------------------------------------

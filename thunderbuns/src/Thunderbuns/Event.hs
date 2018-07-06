@@ -8,13 +8,14 @@ module Thunderbuns.Event where
 import Control.Lens (view)
 import Control.Monad.Except
 import Control.Monad.Reader
-import Data.UUID (UUID, toText)
 import Thunderbuns.Channel.Types (Channel(..), Msg(..))
 import Thunderbuns.Config (HasEventChannel(..), HasDbConnection(..))
 import Thunderbuns.Exception (ThunderbunsException)
 import Thunderbuns.Logging (HasLogger(..))
 import UnliftIO.STM (atomically, writeTChan)
 import Thunderbuns.DB.Internal (runDB)
+import Thunderbuns.OrderedUUID (OrderedUUID, orderedUUID, toUUID)
+import Thunderbuns.Validate (V, unV)
 import Database.CQL4
 import Data.Traversable (for)
 
@@ -22,18 +23,18 @@ class Monad m =>
       MonadEvent m
   where
   broadcast :: Msg -> m ()
-  eventsSince :: UUID -> m [Msg]
+  eventsSince :: V OrderedUUID -> m [Msg]
 
 instance (HasLogger r, HasEventChannel r, HasDbConnection r) =>
          MonadEvent (ReaderT r (ExceptT ThunderbunsException IO)) where
   broadcast msg = do
     chan <- asks (view eventBroadcast)
     liftIO $ atomically $ writeTChan chan msg
-  eventsSince pk =
+  eventsSince uuid =
     runDB $ do
       let cql = "select channel, created, user, msg from tb.msg where created>?"
-      rows <- executeQuery One cql [TimeUUIDValue pk]
+      rows <- executeQuery One cql [TimeUUIDValue (toUUID $ unV uuid)]
       for
         (reverse rows)
         (extractRow
-           (Msg <$> fmap Channel extract <*> fmap toText extract <*> extract <*> extract))
+           (Msg <$> fmap Channel extract <*> fmap orderedUUID extract <*> extract <*> extract))

@@ -148,7 +148,7 @@ updateChannelBefore = do
     case last of
       Nothing -> pure unit
       Just (WT.Msg last') -> do
-        ms <- runReaderT (getChannelBefore n last'.pk) s
+        ms <- runReaderT (getChannelBefore n last'.created) s
         emitMessage ctx $ MessagesBeforeMsg ms
 
 updateMessages :: Array WT.Msg -> State Model (Cmd Msg)
@@ -166,7 +166,7 @@ updateMessagesBefore ms = do
     liftEffect $ prime shouldLoadOlderSensor
     maybe
       (pure unit)
-      (\msg -> affF $ elementById (ElementId msg.pk) ctx.document >>= scrollIntoViewTop true)
+      (\msg -> affF $ elementById (ElementId msg.created) ctx.document >>= scrollIntoViewTop true)
       (unwrap <$> last)
 
 addMessage :: String -> State Model (Cmd Msg)
