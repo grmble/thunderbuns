@@ -31,6 +31,12 @@ instance (HasLogger r, HasEventChannel r, HasDbConnection r) =>
     chan <- asks (view eventBroadcast)
     liftIO $ atomically $ writeTChan chan msg
   eventsSince uuid =
+    pure []
+    {--
+    does not work with msg table - can only query with channel
+
+    need event table ...
+
     runDB $ do
       let cql = "select channel, created, user, msg from tb.msg where created>?"
       rows <- executeQuery One cql [TimeUUIDValue (toUUID $ unV uuid)]
@@ -38,3 +44,4 @@ instance (HasLogger r, HasEventChannel r, HasDbConnection r) =>
         (reverse rows)
         (extractRow
            (Msg <$> fmap Channel extract <*> fmap orderedUUID extract <*> extract <*> extract))
+      --}

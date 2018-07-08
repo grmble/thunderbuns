@@ -4,8 +4,9 @@
 -- but only purescript-bridge works with purescript 0.12
 -- as of now, so this is hand coded
 --
--- Argonaut Codecs generics is not ready yet either,
--- so we are faking argonaut codecs via foreign-generic
+-- Directly parsing to Argonaut JSON does not work - it insists
+-- on calling JSON.parse on the input, even for error returns.
+-- So we always read a string and decode on our own.
 module Thunderbuns.WebAPI where
 
 import Prelude
@@ -28,20 +29,26 @@ import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple)
 import Effect (Effect)
+import Effect.Aff (catchError, error, message, throwError)
 import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (liftEffect)
+import Effect.Console (log)
 import Foreign (Foreign, readArray, readString)
-import Foreign.Generic (defaultOptions, genericDecode, genericEncode, genericDecodeJSON)
+import Foreign.Class (class Decode)
+import Foreign.Generic (decodeJSON, defaultOptions, genericDecode, genericDecodeJSON, genericEncode)
 import Foreign.Generic.Class (class GenericEncode, class GenericDecode)
 import Foreign.Generic.Types (Options)
 import Foreign.Index ((!))
 import Global.Unsafe (unsafeEncodeURIComponent)
-import Network.HTTP.Affjax (URL, affjax, defaultRequest, post)
+import Network.HTTP.Affjax (Affjax, AffjaxRequest, AffjaxResponse, URL, affjax, defaultRequest, post)
 import Network.HTTP.Affjax.Request as ARq
 import Network.HTTP.Affjax.Response as ARs
 import Network.HTTP.RequestHeader as RH
+import Network.HTTP.StatusCode (StatusCode(..))
 import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID(..))
 import Thunderbuns.WebAPI.Types (Channel(..), Msg, NewMsg, Priority, Token, UserPass)
 import Thunderfront.Types (Model)
+import Toastr as T
 import Unsafe.Coerce (unsafeCoerce)
 
 newtype ApiParams
@@ -110,66 +117,97 @@ authHeader =
 postAuth :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => UserPass -> m Token
 postAuth body = do
   url <- requestURL "auth"
-  rsp <- liftAff $ post ARs.json url (ARq.json (gEncode body))
-  gDecode rsp.response
+  rsp <- liftAff $ post ARs.string url (ARq.json (gEncode body))
+  liftAff $ affF $ decodeJSON rsp.response
+
+
+handleError
+  :: forall r m a
+  .  HasApiParams r => MonadReader r m => MonadAff m
+  => AffjaxResponse String -> m a -> m a
+handleError rsp ok = do
+  let StatusCode code = rsp.status
+  if (code / 100) == 2
+     then ok
+     else do
+       liftEffect $ T.error rsp.response "Error"
+       liftAff $ throwError $ error (show rsp.status <> ": " <> rsp.response)
+
+decodeResponse
+  :: forall r m a
+  .  HasApiParams r => MonadReader r m => MonadAff m
+  => Decode a
+  => AffjaxResponse String -> m a
+decodeResponse rsp = do
+  handleError rsp $
+    liftAff $ affF $ decodeJSON rsp.response
+
+authGet
+  :: forall r m
+  .  HasApiParams r => MonadReader r m => MonadAff m
+  => URL -> m (AffjaxResponse String)
+authGet url = do
+  url' <- requestURL url
+  auth <- authHeader
+  liftAff $ affjax' ARs.string $
+    defaultRequest { method = Left GET
+                   , url = url'
+                   , headers = [ RH.RequestHeader "authorization" auth ]
+                   , content = Nothing }
+
+authPut
+  :: forall r m a rep
+  .  HasApiParams r => MonadReader r m => MonadAff m => Generic a rep => GenericEncode rep
+  => URL -> a -> m Unit
+authPut url body = do
+  url' <- requestURL url
+  liftEffect $ log ("authPut URL: " <> url')
+  auth <- authHeader
+  rsp <- liftAff $ affjax' ARs.string $
+         defaultRequest { method = Left PUT
+                        , url = url'
+                        , headers = [ RH.RequestHeader "authorization" auth ]
+                        , content = Just (ARq.json $ gEncode body) }
+  handleError rsp (pure unit)
+
+affjax' :: forall a. ARs.Response a -> AffjaxRequest -> Affjax a
+affjax' a b =
+  catchError (affjax a b) $ \e -> do
+    liftEffect $ T.error (message e) "Error"
+    throwError e
 
 
 getChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => m (Array Channel)
-getChannel = do
-  url <- requestURL "channel"
-  auth <- authHeader
-  rsp <- liftAff $ affjax ARs.json $
-    defaultRequest { method = Left GET
-                   , url = url
-                   , headers = [ RH.RequestHeader "authorization" auth ]
-                   , content = Nothing }
-  gDecodeArray rsp.response
+getChannel =
+  authGet "channel" >>= decodeResponse
 
 
 putChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> m Unit
-putChannel body = do
-  url <- requestURL "channel"
-  auth <- authHeader
-  _ <- liftAff $ affjax ARs.ignore $
-       defaultRequest { method = Left PUT
-                   , url = url
-                   , headers = [ RH.RequestHeader "authorization" auth ]
-                   , content = Just (ARq.json $ gEncode body) }
-  pure unit
+putChannel = do
+  authPut "channel"
 
 
-getChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> m (Array Msg)
-getChannelByChannel (Channel channel) = do
-  url <- requestURL "channel/"
-  auth <- authHeader
-  rsp <- liftAff $ affjax ARs.json $
-    defaultRequest { method = Left GET
-                   , url = url <> urlPath channel.channelName
-                   , headers = [ RH.RequestHeader "authorization" auth ]
-                   , content = Nothing }
-  gDecodeArray rsp.response
+getChannelByChannel
+  :: forall r m
+  .  HasApiParams r => MonadReader r m => MonadAff m
+  => Channel -> m (Array Msg)
+getChannelByChannel (Channel channel) =
+  authGet ("channel/" <> urlPath channel.channelName) >>= decodeResponse
 
-getChannelBefore :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> OrderedUUID -> m (Array Msg)
-getChannelBefore (Channel channel) (OrderedUUID created) = do
-  url <- requestURL "channel/"
-  auth <- authHeader
-  rsp <- liftAff $ affjax ARs.json $
-    defaultRequest { method = Left GET
-                   , url = url <> urlPath channel.channelName <> "/before/" <> urlPath created
-                   , headers = [ RH.RequestHeader "authorization" auth ]
-                   , content = Nothing }
-  gDecodeArray rsp.response
+getChannelBefore
+  :: forall r m
+  .  HasApiParams r => MonadReader r m => MonadAff m
+  => Channel -> OrderedUUID -> m (Array Msg)
+getChannelBefore (Channel channel) (OrderedUUID created) =
+  authGet ("channel/" <> urlPath channel.channelName <> "/before/" <> urlPath created) >>=
+  decodeResponse
 
-putChannelByChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => NewMsg -> Channel -> m Unit
+putChannelByChannel
+  :: forall r m
+  .  HasApiParams r => MonadReader r m => MonadAff m
+  => NewMsg -> Channel -> m Unit
 putChannelByChannel body (Channel channel) = do
-  url <- requestURL "channel/"
-  auth <- authHeader
-  _ <- liftAff $ affjax ARs.ignore $
-       defaultRequest { method = Left PUT
-                   , url = url <> urlPath channel.channelName
-                   , headers = [ RH.RequestHeader "authorization" auth ]
-                   , content = Just (ARq.json $ gEncode body) }
-  pure unit
+  authPut ("channel/" <> urlPath channel.channelName) body
 
 getDebug :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => m (Array (Tuple String (Maybe Priority)))
 getDebug = pure []

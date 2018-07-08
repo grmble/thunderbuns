@@ -21,7 +21,8 @@ instance HasLogger r => MonadTLogger (ReaderT r Handler) where
   getSystemTime = unwrapRIO getSystemTime
 
 servantErr :: ServantErr -> T.Text -> ServantErr
-servantErr err msg = err {errBody = BL.fromStrict $ TE.encodeUtf8 msg}
+servantErr err msg = err { errBody = BL.fromStrict $ TE.encodeUtf8 msg
+                         , errHeaders = [ ("Content-Type", "text/plain") ]}
 
 authenticationFailed ::
      (MonadTLogger m, MonadError ServantErr m) => T.Text -> m a

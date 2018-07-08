@@ -1,4 +1,3 @@
-(A) 2018-07-01 display errors +frontend +error
 (A) 2018-07-01 event table for event endpoints +event +backend
 (A) 2018-07-01 queue events via nqs +nqs +event +backend
 2018-07-01 EventSource in F instead of Effect +frontend +event
@@ -23,3 +22,4 @@
 2018-07-04 get sensor into bonsai +bonsai
 2018-07-04 scrolling up: does not work when user holds scroll bar +frontend
 2018-07-04 scrolling up: pg-up/down should work from message input field +frontend
+x 2018-07-08 2018-07-01 display errors +frontend +error pri:A

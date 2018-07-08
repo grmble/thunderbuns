@@ -17,6 +17,7 @@ import Thunderfront.View (viewMain)
 
 main :: Effect Unit
 main = do
+  -- T.configure T.defaultOptions
   hash <- effF $ window >>= document >>= locationHash
   let model = if String.length hash > 2
               then set (activeChannel <<< channelName) (String.drop 2 hash) emptyModel
