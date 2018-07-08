@@ -1,23 +1,18 @@
+(A) 2018-07-01 display errors +frontend +error
+(A) 2018-07-01 event table for event endpoints +event +backend
+(A) 2018-07-01 queue events via nqs +nqs +event +backend
 2018-07-01 EventSource in F instead of Effect +frontend +event
 2018-07-01 Flesh out Scroll.purs, move to DOM project +bonsai +dom
-2018-07-01 base64 urlsafe via atob +frontend +jwt https://stackoverflow.com/a/44528376/5808912
 2018-07-01 batch +cql4
 2018-07-01 channel groups for private messages and irc +frontend +groups
 2018-07-01 channel subscriptions +frontend +event
 2018-07-01 debug mode; bonsai can reply messages ignoring commands +bonsai +replay
 2018-07-01 delayUntilRendered should be exported from Bonsai +bonsai
-2018-07-01 display errors +frontend +error
 2018-07-01 endpoints/routes should be in metrics +metrics
-2018-07-01 event table for event endpoints +event +backend
 2018-07-01 events endpoint should have its own metrics +metrics
-2018-07-01 frontend should detect when tokens expire and log itself out +frontend +jwt
 2018-07-01 handle more strings types +backend +tlogger
-2018-07-01 limit event handlers for scroll event +frontend +bonsai +scroll
-2018-07-01 loading of earlier messages when scrolling to top +scroll +frontend
 2018-07-01 logging - support request id (req_id) +tlogger
 2018-07-01 native paging +cql4 +event +backend
-2018-07-01 purescript base64 urlsafe decoder +frontend +jwt
-2018-07-01 queue events via nqs +nqs +event +backend
 2018-07-01 show instance for FormMsg +bonsai
 2018-07-01 simpleTask arg is most often not needed. simpleTask, domTask, emittingTask ??? +bonsai purescript-bonsai-types#2
 2018-07-01 supervise connection +cql4
@@ -25,12 +20,6 @@
 2018-07-01 support discovery +nqs +backend
 2018-07-01 tests for validators: uuid and single line
 2018-07-01 typesafe form result +forms +frontend
-2018-07-01 use notifications? +error https://developer.mozilla.org/en-US/docs/Web/API/notification
 2018-07-04 get sensor into bonsai +bonsai
 2018-07-04 scrolling up: does not work when user holds scroll bar +frontend
 2018-07-04 scrolling up: pg-up/down should work from message input field +frontend
-x 2018-07-06 2018-07-06 store messages in map sorted by ordereduuid +frontend
-x 2018-07-04 2018-07-04 scroll back in channel history +frontend
-x 2018-07-04 2018-07-04 sensor aka intelligent filter +frontend
-x 2018-07-06 2018-07-06 represent timeuuid as something sortable on the javascript side +backend
-x 2018-07-06 2018-07-06 newtype ordereduuid in +frontend

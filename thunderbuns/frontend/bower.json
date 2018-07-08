@@ -7,11 +7,12 @@
     "output"
   ],
   "dependencies": {
-    "purescript-bonsai-forms": "grmble/purescript-bonsai-forms#purs_0_12",
+    "purescript-bonsai-forms": "grmble/purescript-bonsai-forms#master",
     "purescript-affjax": "^6.0.0",
     "purescript-profunctor-lenses": "^4.0.0",
     "purescript-foreign-generic": "^7.0.0",
-    "event-source-polyfill": "^0.0.12"
+    "event-source-polyfill": "^0.0.12",
+    "purescript-js-date": "^6.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0"
