@@ -7,7 +7,19 @@
 -- Directly parsing to Argonaut JSON does not work - it insists
 -- on calling JSON.parse on the input, even for error returns.
 -- So we always read a string and decode on our own.
-module Thunderbuns.WebAPI where
+module Thunderbuns.WebAPI
+  ( class HasApiParams
+  , ApiParams
+  , apiParams
+  , listChannels
+  , createChannel
+  , createMessage
+  , listMessages
+  , listMessagesBefore
+  , postAuth
+  , gDecodeEvent
+  , gOpts
+  ) where
 
 import Prelude
 
@@ -177,37 +189,37 @@ affjax' a b =
     throwError e
 
 
-getChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => m (Array Channel)
-getChannel =
+listChannels :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => m (Array Channel)
+listChannels =
   authGet "channel" >>= decodeResponse
 
 
-putChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> m Unit
-putChannel = do
+createChannel :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => Channel -> m Unit
+createChannel = do
   authPut "channel"
 
 
-getChannelByChannel
+listMessages
   :: forall r m
   .  HasApiParams r => MonadReader r m => MonadAff m
   => Channel -> m (Array Msg)
-getChannelByChannel (Channel channel) =
+listMessages (Channel channel) =
   authGet ("channel/" <> urlPath channel.channelName) >>= decodeResponse
 
-getChannelBefore
+listMessagesBefore
   :: forall r m
   .  HasApiParams r => MonadReader r m => MonadAff m
   => Channel -> OrderedUUID -> m (Array Msg)
-getChannelBefore (Channel channel) (OrderedUUID created) =
+listMessagesBefore (Channel channel) (OrderedUUID created) =
   authGet ("channel/" <> urlPath channel.channelName <> "/before/" <> urlPath created) >>=
   decodeResponse
 
-putChannelByChannel
+createMessage
   :: forall r m
   .  HasApiParams r => MonadReader r m => MonadAff m
-  => NewMsg -> Channel -> m Unit
-putChannelByChannel body (Channel channel) = do
-  authPut ("channel/" <> urlPath channel.channelName) body
+  => Channel -> NewMsg -> m Unit
+createMessage (Channel channel) = do
+  authPut ("channel/" <> urlPath channel.channelName)
 
 getDebug :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => m (Array (Tuple String (Maybe Priority)))
 getDebug = pure []

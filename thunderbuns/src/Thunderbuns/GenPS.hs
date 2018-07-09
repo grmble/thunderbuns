@@ -104,7 +104,7 @@ fixHashmap :: BridgePart
 fixHashmap = do
   typeName ^== "HashMap"
   typeModule ^== "Data.HashMap" <|> typeModule ^== "Data.HashMap.Base"
-  TypeInfo "purescript-maps" "Data.Map" "Map" <$> psTypeParameters
+  TypeInfo "purescript-unordered-collections" "Data.HashMap" "HashMap" <$> psTypeParameters
 
 -- OrderedUUID -> String
 fixOrderedUUID :: BridgePart

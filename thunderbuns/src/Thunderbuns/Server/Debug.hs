@@ -14,7 +14,7 @@ import Thunderbuns.Auth.Types
 import Thunderbuns.Logging
 import UnliftIO.STM
 
-type LogLevels = [(T.Text, Maybe Priority)]
+type LogLevels = M.HashMap T.Text (Maybe Priority)
 
 type DebugAPI
    -- list log levels
@@ -39,13 +39,13 @@ debugServer r _ = listLogLevels :<|> modifyLogLevels
       names <- readTVarIO namesTV
       let priMapTV = view (loggerL . priorityMapL) r
       priMap <- readTVarIO priMapTV
-      pure $ M.toList $ foldr (\n -> M.insert n (M.lookup n priMap)) M.empty names
+      pure $ foldr (\n -> M.insert n (M.lookup n priMap)) M.empty names
     modifyLogLevels :: LogLevels -> Handler NoContent
     modifyLogLevels lls = do
       let namesTV = view (loggerL . loggerNamesL) r
       let priMapTV = view (loggerL . priorityMapL) r
-      for_ lls $ \(n, mpri) ->
-        atomically $ do
+      atomically $
+        for_ (M.toList lls) $ \(n, mpri) -> do
           modifyTVar namesTV (S.insert n)
           modifyTVar priMapTV (M.alter (const mpri) n)
       pure NoContent

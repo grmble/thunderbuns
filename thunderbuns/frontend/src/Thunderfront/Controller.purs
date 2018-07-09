@@ -22,7 +22,7 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Foreign (Foreign)
-import Thunderbuns.WebAPI (gDecodeEvent, getChannel, getChannelBefore, getChannelByChannel, postAuth, putChannelByChannel)
+import Thunderbuns.WebAPI (gDecodeEvent, listChannels, listMessagesBefore, listMessages, postAuth, createMessage)
 import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID)
 import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
 import Thunderbuns.WebAPI.Types as WT
@@ -60,7 +60,7 @@ updateJwtToken (Just jwt) = do
   model <- get
   pure $ emittingTask $ \ctx -> do
     affF (defaultView ctx.document >>= setItem "tbToken" jwt)
-    cs <- runReaderT getChannel model
+    cs <- runReaderT listChannels model
     emitMessage ctx $ ChannelListMsg cs
     es <- liftEffect $ newEventSource "/events" (Just jwt)
     emitMessage ctx $ EventSourceMsg (Just es)
@@ -139,7 +139,7 @@ updateActiveChannel c = do
   s <- get
   pure $ simpleTask $ \doc -> do
     let n = view channelName c
-    cs <- runReaderT (getChannelByChannel c) s
+    cs <- runReaderT (listMessages c) s
     affF $ setLocationHash ("#!" <> n) doc
     pure $ MessageMsg cs
 
@@ -152,7 +152,7 @@ updateChannelBefore = do
     case oldest of
       Nothing -> pure unit
       Just created -> do
-        ms <- runReaderT (getChannelBefore c created) s
+        ms <- runReaderT (listMessagesBefore c created) s
         emitMessage ctx $ MessageBeforeMsg ms
 
 oldestUUID :: State Model (Maybe OrderedUUID)
@@ -184,7 +184,7 @@ addMessage str = do
   s <- get
   pure $ emittingTask $ \ctx -> do
     -- yes, reqBody -> channel
-    runReaderT (putChannelByChannel (WT.NewMsg { msg: str} ) c) s
+    runReaderT (createMessage c (WT.NewMsg { msg: str} )) s
     -- emitMessage ctx $ ActiveChannelMsg c
     emitMessage ctx $ MessageInputMsg ""
 
