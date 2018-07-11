@@ -12,7 +12,7 @@ import Data.Lens (view)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Foreign (Foreign, F)
-import Thunderbuns.WebAPI.Types as WT
+import Thunderbuns.WebAPI.GenTypes as WT
 import Thunderfront.Forms.Login (loginForm)
 import Thunderfront.Types (CurrentView(..), Model, Msg(..), activeChannel, channelName, channels, currentView, inputModel, jwtToken, messages, shouldLoadOlderSensor)
 

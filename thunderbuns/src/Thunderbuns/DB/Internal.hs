@@ -3,11 +3,15 @@ module Thunderbuns.DB.Internal where
 import Control.Lens (view)
 import Control.Monad.Except
 import Control.Monad.Reader
+import Data.Aeson (FromJSON, decode)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import Data.Streaming.Network
 import qualified Data.Text.Encoding as TE
 import Database.CQL4
 import Thunderbuns.Config
 import Thunderbuns.Config.DB (HasDbConfig, dbConfig, host, port)
+import Thunderbuns.Exception (maybeError)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (bracket)
 import UnliftIO.STM (atomically, putTMVar)
@@ -24,7 +28,8 @@ withConnection f = do
       bracket
         -- (connection' hexdumpLogger app)
         (connection app)
-        (runConnection closeConnection) f
+        (runConnection closeConnection)
+        f
 
 -- | Supervise the global db connection
 --
@@ -46,10 +51,10 @@ superviseConnection = do
       delayForever
 
 runDB ::
-     ( HasDbConnection r
-     , MonadReader r m
-     , MonadIO m
-     )
-  => ConnectionIO a
-  -> m a
+     (HasDbConnection r, MonadReader r m, MonadIO m) => ConnectionIO a -> m a
 runDB m = ask >>= dbConnection >>= liftIO . runConnection' m
+
+-- | Aeson Decode or Error
+decodeError :: (FromJSON a, MonadError CQLException m) => B.ByteString -> m a
+decodeError bs =
+  maybeError (messageException "Aeson.decode") $ decode $ BL.fromStrict bs

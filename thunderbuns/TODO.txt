@@ -23,3 +23,4 @@
 2018-07-04 scrolling up: does not work when user holds scroll bar +frontend
 2018-07-04 scrolling up: pg-up/down should work from message input field +frontend
 x 2018-07-08 2018-07-01 display errors +frontend +error pri:A
+x 2018-07-09 2018-07-09 make channel a simple newtype (minimal json) +frontend +backend

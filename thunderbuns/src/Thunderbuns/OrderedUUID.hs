@@ -45,6 +45,7 @@ import qualified Data.Serialize.Put as Put
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Time (UTCTime(..), addUTCTime, fromGregorian)
+import Data.Time.Calendar (showGregorian)
 import Data.UUID (UUID)
 import Data.UUID.Util (UnpackedUUID(..), pack, unpack)
 import GHC.Generics (Generic)
@@ -136,3 +137,8 @@ timestamp (OrderedUUID o) =
       sinceGreg = cnsSinceGreg / 10000000.0
       greg = UTCTime (fromGregorian 1582 10 15) 0
    in addUTCTime sinceGreg greg
+
+-- | Extract the UTC date from a UTCTime, suitable for bucketing
+toDailyBucket :: UTCTime -> T.Text
+toDailyBucket ts =
+  T.pack $ showGregorian $ utctDay ts

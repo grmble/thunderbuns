@@ -23,9 +23,8 @@ import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Foreign (Foreign)
 import Thunderbuns.WebAPI (gDecodeEvent, listChannels, listMessagesBefore, listMessages, postAuth, createMessage)
-import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID)
-import Thunderbuns.WebAPI.Types (Channel, Token(..), UserPass(..))
-import Thunderbuns.WebAPI.Types as WT
+import Thunderbuns.WebAPI.Types (Channel, OrderedUUID)
+import Thunderbuns.WebAPI.GenTypes as WT
 import Thunderfront.EventSource (EventSource, close, newEventSource, onMessage)
 import Thunderfront.Scroll (isScrolledToBottom, scrollToBottom, scrollIntoViewTop)
 import Thunderfront.Sensor (prime)
@@ -114,7 +113,7 @@ updateLoginForm FormOK = do
   modifying loginFormModel (M.delete "password")
   model <- get
   pure $ emittingTask $ \ctx -> do
-    Token {token} <- runReaderT (postAuth (UserPass {user: u, pass:p})) model
+    WT.Token {token} <- runReaderT (postAuth (WT.UserPass {user: u, pass:p})) model
     emitMessage ctx (JwtTokenMsg $ Just token)
 updateLoginForm msg = do
   modifying loginFormModel (updatePlain msg)

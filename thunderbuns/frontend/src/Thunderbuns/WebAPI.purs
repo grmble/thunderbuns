@@ -46,9 +46,9 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Foreign (Foreign, readArray, readString)
-import Foreign.Class (class Decode)
-import Foreign.Generic (decodeJSON, defaultOptions, genericDecode, genericDecodeJSON, genericEncode)
-import Foreign.Generic.Class (class GenericEncode, class GenericDecode)
+import Foreign.Class (class Decode, class Encode, encode)
+import Foreign.Generic (decodeJSON, defaultOptions, genericDecode, genericDecodeJSON)
+import Foreign.Generic.Class (class GenericDecode)
 import Foreign.Generic.Types (Options)
 import Foreign.Index ((!))
 import Global.Unsafe (unsafeEncodeURIComponent)
@@ -57,8 +57,8 @@ import Network.HTTP.Affjax.Request as ARq
 import Network.HTTP.Affjax.Response as ARs
 import Network.HTTP.RequestHeader as RH
 import Network.HTTP.StatusCode (StatusCode(..))
-import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID(..))
-import Thunderbuns.WebAPI.Types (Channel(..), Msg, NewMsg, Priority, Token, UserPass)
+import Thunderbuns.WebAPI.GenTypes (Msg, NewMsg, Priority, Token, UserPass)
+import Thunderbuns.WebAPI.Types (Channel(..), OrderedUUID(..))
 import Thunderfront.Types (Model)
 import Toastr as T
 import Unsafe.Coerce (unsafeCoerce)
@@ -92,8 +92,8 @@ baseURL = _Newtype <<< prop (SProxy :: SProxy "baseURL")
 gOpts :: Options
 gOpts = defaultOptions { unwrapSingleConstructors = true }
 
-gEncode :: forall a rep. Generic a rep => GenericEncode rep => a -> Json
-gEncode a = unsafeCoerce $ genericEncode gOpts a
+gEncode :: forall a. Encode a => a -> Json
+gEncode a = unsafeCoerce $ encode a
 
 gDecode :: forall a rep m. Generic a rep => GenericDecode rep => MonadAff m => Json -> m a
 gDecode json = liftAff $ affF $ genericDecode gOpts (unsafeCoerce json)
@@ -168,8 +168,8 @@ authGet url = do
                    , content = Nothing }
 
 authPut
-  :: forall r m a rep
-  .  HasApiParams r => MonadReader r m => MonadAff m => Generic a rep => GenericEncode rep
+  :: forall r m a
+  .  HasApiParams r => MonadReader r m => MonadAff m => Encode a
   => URL -> a -> m Unit
 authPut url body = do
   url' <- requestURL url
@@ -204,14 +204,14 @@ listMessages
   .  HasApiParams r => MonadReader r m => MonadAff m
   => Channel -> m (Array Msg)
 listMessages (Channel channel) =
-  authGet ("channel/" <> urlPath channel.channelName) >>= decodeResponse
+  authGet ("channel/" <> urlPath channel) >>= decodeResponse
 
 listMessagesBefore
   :: forall r m
   .  HasApiParams r => MonadReader r m => MonadAff m
   => Channel -> OrderedUUID -> m (Array Msg)
 listMessagesBefore (Channel channel) (OrderedUUID created) =
-  authGet ("channel/" <> urlPath channel.channelName <> "/before/" <> urlPath created) >>=
+  authGet ("channel/" <> urlPath channel <> "/before/" <> urlPath created) >>=
   decodeResponse
 
 createMessage
@@ -219,7 +219,7 @@ createMessage
   .  HasApiParams r => MonadReader r m => MonadAff m
   => Channel -> NewMsg -> m Unit
 createMessage (Channel channel) = do
-  authPut ("channel/" <> urlPath channel.channelName)
+  authPut ("channel/" <> urlPath channel)
 
 getDebug :: forall r m. HasApiParams r => MonadReader r m => MonadAff m => m (Array (Tuple String (Maybe Priority)))
 getDebug = pure []

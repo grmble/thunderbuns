@@ -16,8 +16,7 @@ myTypes :: [SumType 'Haskell]
 myTypes
   -- equal (Proxy :: Proxy Channel) $ mkSumType (Proxy :: Proxy Channel)
  =
-  [ mkSumType (Proxy :: Proxy Channel)
-  , mkSumType (Proxy :: Proxy Msg)
+  [ mkSumType (Proxy :: Proxy Msg)
   , mkSumType (Proxy :: Proxy NewMsg)
   , mkSumType (Proxy :: Proxy Priority)
   , mkSumType (Proxy :: Proxy UserPass)
@@ -32,7 +31,7 @@ generatePurescript = do
 
 postprocessTypes :: IO ()
 postprocessTypes = do
-  let fn = "frontend/src/Thunderbuns/WebAPI/Types.purs"
+  let fn = "frontend/src/Thunderbuns/WebAPI/GenTypes.purs"
   withFile fn ReadWriteMode $ \h -> do
     ls <- lines' h []
     hSeek h AbsoluteSeek 0
@@ -84,9 +83,9 @@ postprocessTypes = do
                , ordInstance klass
                , showInstance klass
                ])
-            ["Channel", "Msg", "NewMsg", "Priority", "UserPass", "Token"]
+            ["Msg", "NewMsg", "Priority", "UserPass", "Token"]
 
--- | Move the types from Thunderbuns.Logging to Thunderbuns.WebAPI.Types
+-- | Move the types from Thunderbuns.Logging to Thunderbuns.WebAPI.GenTypes
 fixTypesModule :: BridgePart
 fixTypesModule = do
   typeModule ^== "Thunderbuns.Logging" <|>
@@ -94,7 +93,7 @@ fixTypesModule = do
     typeModule ^== "Thunderbuns.Channel.Types" <|>
     typeModule ^== "Thunderbuns.Server.Auth"
   t <- view haskType
-  TypeInfo (_typePackage t) "Thunderbuns.WebAPI.Types" (_typeName t) <$>
+  TypeInfo (_typePackage t) "Thunderbuns.WebAPI.GenTypes" (_typeName t) <$>
     psTypeParameters
 
 -- | Substitue Map in generated API for HashMap String
@@ -111,12 +110,18 @@ fixOrderedUUID :: BridgePart
 fixOrderedUUID = do
   typeName ^== "OrderedUUID"
   typeModule ^== "Thunderbuns.OrderedUUID"
-  -- no import necessary from string ... just import something
-  TypeInfo "purescript-prims" "Thunderbuns.WebAPI.OrderedUUID" "OrderedUUID" <$> psTypeParameters
+  TypeInfo "purescript-prims" "Thunderbuns.WebAPI.Types" "OrderedUUID" <$> psTypeParameters
 
+-- Channel manual newtype
+fixChannel :: BridgePart
+fixChannel = do
+  typeName ^== "Channel"
+  typeModule ^== "Thunderbuns.Channel.Types"
+  -- no import necessary from string ... just import something
+  TypeInfo "purescript-prims" "Thunderbuns.WebAPI.Types" "Channel" <$> psTypeParameters
 
 myBridge :: BridgePart
-myBridge = defaultBridge <|> fixTypesModule <|> fixHashmap <|> fixOrderedUUID
+myBridge = defaultBridge <|> fixChannel <|> fixTypesModule <|> fixHashmap <|> fixOrderedUUID
 
 data MyBridge
 

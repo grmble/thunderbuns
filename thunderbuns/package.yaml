@@ -29,10 +29,12 @@ dependencies:
 - binary
 - bytestring
 - cereal
+- containers
 - cryptonite
 - d64
 - dhall
 - free
+- hashable
 - http-api-data
 - http-types
 - jose-jwt

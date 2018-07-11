@@ -3,7 +3,9 @@
 
 module Thunderbuns.Channel.Types where
 
+import Data.Aeson (FromJSON(..), ToJSON(..), Value(..), withText)
 import Data.Aeson.TH (defaultOptions, deriveJSON)
+import Data.Hashable (Hashable)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Thunderbuns.Auth.Types (Username)
@@ -13,9 +15,13 @@ import Web.HttpApiData
 
 newtype Channel = Channel
   { channelName :: T.Text
-  } deriving (Eq, Ord, Generic, Show)
+  } deriving (Eq, Ord, Hashable, Generic, Show)
 
-$(deriveJSON defaultOptions ''Channel)
+instance FromJSON Channel where
+  parseJSON = withText "Channel" (pure . Channel)
+
+instance ToJSON Channel where
+  toJSON (Channel cn) = String cn
 
 instance DefaultValidator Channel where
   defaultValidator msg (Channel c) =

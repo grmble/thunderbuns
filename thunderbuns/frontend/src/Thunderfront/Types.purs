@@ -17,9 +17,8 @@ import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Foreign (Foreign, F)
 import Foreign.Index (readProp)
-import Thunderbuns.WebAPI.OrderedUUID (OrderedUUID)
-import Thunderbuns.WebAPI.Types (Channel(..), _Channel)
-import Thunderbuns.WebAPI.Types as WT
+import Thunderbuns.WebAPI.Types (Channel(..), OrderedUUID, _Channel)
+import Thunderbuns.WebAPI.GenTypes as WT
 import Thunderfront.EventSource (EventSource)
 import Thunderfront.Scroll (clientHeight, scrollHeight, scrollTop)
 import Thunderfront.Sensor (Sensor, differentialSensor)
@@ -56,8 +55,8 @@ emptyModel :: Model
 emptyModel =
   Model { jwtToken: Nothing
         , eventSource: Nothing
-        , activeChannel: (Channel { channelName: "Default" })
-        , channels: [Channel { channelName: "Default" } ]
+        , activeChannel: (Channel "Default")
+        , channels: [Channel "Default"]
         , messages: M.empty
         , formModels: FormModels { inputModel: ""
                                  , loginFormModel: emptyFormModel}
@@ -77,7 +76,7 @@ currentView :: Lens' Model CurrentView
 currentView = _Newtype <<< prop (SProxy :: SProxy "currentView")
 
 channelName :: Lens' Channel String
-channelName = _Channel <<< prop (SProxy :: SProxy "channelName")
+channelName = _Channel
 
 activeChannel :: Lens' Model Channel
 activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
