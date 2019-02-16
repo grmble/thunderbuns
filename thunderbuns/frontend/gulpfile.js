@@ -30,6 +30,7 @@ exports.clean = clean;
 
 
 exports.fullClean = gulp.series(clean, function () {
+  return del(['node_modules', 'bower_components']);
 });
 exports.fullClean.description = 'Clean also npm and bower artifacts';
 
