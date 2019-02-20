@@ -11,29 +11,20 @@ import Data.Conduit.Network (runTCPClient, clientSettings, appSource, appSink)
 import Data.String (fromString)
 import qualified Data.Text as T
 import qualified Data.ByteString as B
-import Thunderbuns.Irc.Parser (parseMessageOrLine, parseAsText)
+import Thunderbuns.Irc.Parser (parseMessageOrLine, parseAsByteString)
+import Thunderbuns.Irc.Connection
 
-data Env = Env { server:: Server, logger:: Logger} deriving (Show)
+data Env = Env { envServer:: Server, envLogger:: Logger} deriving (Show)
 
 initialEnv :: IO Env
 initialEnv = do
-  server <- input auto "./config.dhall"
-  logger <- rootLogger "thunderbuns.root" DEBUG consoleHandler
-  pure Env { server, logger }
+  envServer <- input auto "./config.dhall"
+  envLogger <- rootLogger "thunderbuns.root" DEBUG consoleHandler
+  pure Env { envServer, envLogger }
 
 
 runMain :: IO ()
 runMain  = do
   env <- initialEnv
-  logDebug (logger env) "Welcome to the jungle ..."
-  let p = fromIntegral $ port $ server env
-  let h = fromString $ T.unpack $ host $ server env
-  runTCPClient (clientSettings p h) $ \conn -> do
-    logDebug (logger env) "running output conduit"
-    let loginStr = "NICK spamlessj\r\nUSER spamlessj 0 * :Spamless Juergen\r\n" :: B.ByteString
-    logDebug (logger env) (T.pack $ show loginStr)
-    runConduit $ yield loginStr .| appSink conn
-    logDebug (logger env) "running input conduit"
-    runConduit $ appSource conn .| CT.decode CT.utf8 .| CA.conduitParser parseAsText .| mapC snd .| CT.encode CT.utf8 .| CC.stdout
-    logDebug (logger env) "done"
-
+  srv <- newConnection (envServer env)
+  runConnection srv
