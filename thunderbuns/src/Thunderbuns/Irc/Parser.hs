@@ -1,9 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Thunderbuns.Irc.Parser where
 
 import Control.Applicative
-import Control.Lens.TH (makeLenses, makePrisms)
 import Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString as Atto
 import Data.ByteString (ByteString)
@@ -18,65 +15,59 @@ data Code
   = NumericCode Int
   | RplWelcome -- ^ sent after successful registration (also RplYourHost, RplCreated, RplMyInfo)
   | RplBounce -- ^ sent to suggest an alternative server
+  | RplNickInUse -- ^ the nick is already used
   deriving (Eq, Ord, Show)
 
-data Command
+data Cmd
   = Response !Code
-  | Command !ByteString
+  | Cmd !ByteString
   deriving (Eq, Show)
 
-$(makePrisms ''Command)
-
 data Message = Message
-  { _msgPrefix :: !(Maybe ByteString)
-  , _msgCmd :: !Command
-  , _msgArgs :: ![ByteString]
+  { msgPrefix :: !(Maybe ByteString)
+  , msgCmd :: !Cmd
+  , msgArgs :: ![ByteString]
   } deriving (Eq, Show)
-
-$(makeLenses ''Message)
 
 ircLine :: Message -> ByteString
 ircLine (Message pre cmd args) =
   let cmdStr =
         case cmd of
           Response code -> fromString $ show $ fromCode code
-          Command bs -> bs
+          Cmd bs -> bs
       lst = maybe [] (pure . (<>) ":") pre ++ cmdStr : args
-   in B.intercalate " " lst
+   in B.intercalate " " (quoteLastArg lst) <> "\r\n"
+
+quoteLastArg :: [ByteString] -> [ByteString]
+quoteLastArg [] = []
+quoteLastArg [x] = [":" <> x]
+quoteLastArg (x :xs) = x : quoteLastArg xs
 
 fromCode :: Code -> Int
 fromCode (NumericCode x) = x
 fromCode RplWelcome = 1
 fromCode RplBounce = 5
+fromCode RplNickInUse = 433
 
 toCode :: Int -> Code
 toCode 1 = RplWelcome
 toCode 5 = RplBounce
+toCode 433 = RplNickInUse
 toCode x = NumericCode x
 
 isErrorCode :: Code -> Bool
 isErrorCode c = fromCode c >= 400
 
--- | Try to parse message, if we can't parse until next CRLF
-parseMessageOrLine :: Parser (Either ByteString Message)
-parseMessageOrLine = (Right <$> parseMessage) <|> (Left <$> parseLine)
-
-parseAsByteString :: Parser ByteString
-parseAsByteString =
-  parseMessageOrLine >>= \case
-    Left txt -> pure txt
-    Right msg -> pure $ ircLine msg
-
 parseMessage :: Parser Message
-parseMessage = Message <$> parsePrefix <*> parseCommand <*> parseArgs
+parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs
 
 parsePrefix :: Parser (Maybe ByteString)
 parsePrefix =
   option Nothing (fmap Just (token (char ':' *> takeWhile1 notSpCrLfCl)))
 
-parseCommand :: Parser Command
-parseCommand =
-  token (threeDigitCode <|> fmap Command middle) <?>
+parseCmd :: Parser Cmd
+parseCmd =
+  token (threeDigitCode <|> fmap Cmd middle) <?>
   "3 digit message code OR irc command"
   where
     threeDigitCode = fmap (Response . toCode . read) (count 3 digit)

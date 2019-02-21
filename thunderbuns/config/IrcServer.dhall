@@ -7,5 +7,6 @@
 , ssl: Bool
 , serverPassword: Text
 , nick: Text
+, fullname: Text
 , nicksrvPassword: Text
 }

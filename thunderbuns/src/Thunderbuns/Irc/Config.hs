@@ -11,6 +11,7 @@ data Server = Server
   , ssl :: !Bool
   , serverPassword :: !Text
   , nick :: !Text
+  , fullname :: !Text
   , nicksrvPassword :: !Text
   } deriving (Generic, Eq, Show)
 
