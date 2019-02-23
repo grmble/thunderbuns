@@ -40,8 +40,10 @@ ircLine (Message pre cmd args) =
 
 quoteLastArg :: [ByteString] -> [ByteString]
 quoteLastArg [] = []
-quoteLastArg [x] = [":" <> x]
-quoteLastArg (x :xs) = x : quoteLastArg xs
+quoteLastArg [x]
+  | " " `B.isInfixOf` x = [":" <> x]
+  | otherwise = [x]
+quoteLastArg (x:xs) = x : quoteLastArg xs
 
 fromCode :: Code -> Int
 fromCode (NumericCode x) = x

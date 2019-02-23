@@ -1,9 +1,9 @@
 module Thunderbuns.Irc.Config where
 
-import Data.Text (Text)
-import Dhall (Generic, Interpret)
-import qualified Data.Text.Encoding as T
 import Data.ByteString (ByteString)
+import Data.Text (Text)
+import qualified Data.Text.Encoding as T
+import Dhall (Generic, Interpret)
 
 data Server = Server
   { host :: !Text
@@ -17,8 +17,7 @@ data Server = Server
 
 instance Interpret Server
 
-
 connectionSettings :: Server -> (Int, ByteString)
 connectionSettings srv =
   let h = T.encodeUtf8 (host srv)
-  in  (fromIntegral $ port srv, h)
+   in (fromIntegral $ port srv, h)

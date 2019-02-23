@@ -29,6 +29,8 @@ dependencies:
 - bifunctors
 - binary
 - bunyan
+- bunyan-rio
+- bunyan-freer
 - bytestring
 - cereal
 - conduit
@@ -37,6 +39,7 @@ dependencies:
 - cryptonite
 - d64
 - dhall
+- freer-simple
 - hashable
 - http-api-data
 - http-types
