@@ -9,25 +9,7 @@ import Data.Functor
 import Data.Monoid ((<>))
 import Data.String (fromString)
 import qualified Data.Word as W
-
--- | Well known error codes - only the ones we need ...
-data Code
-  = NumericCode Int
-  | RplWelcome -- ^ sent after successful registration (also RplYourHost, RplCreated, RplMyInfo)
-  | RplBounce -- ^ sent to suggest an alternative server
-  | RplNickInUse -- ^ the nick is already used
-  deriving (Eq, Ord, Show)
-
-data Cmd
-  = Response !Code
-  | Cmd !ByteString
-  deriving (Eq, Show)
-
-data Message = Message
-  { msgPrefix :: !(Maybe ByteString)
-  , msgCmd :: !Cmd
-  , msgArgs :: ![ByteString]
-  } deriving (Eq, Show)
+import Thunderbuns.Irc.Types
 
 ircLine :: Message -> ByteString
 ircLine (Message pre cmd args) =

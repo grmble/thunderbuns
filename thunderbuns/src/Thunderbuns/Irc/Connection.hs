@@ -3,7 +3,7 @@
 module Thunderbuns.Irc.Connection where
 
 import Conduit (ConduitT, (.|), await, mapC, runConduit, yield)
-import Control.Concurrent (ThreadId, myThreadId)
+import Control.Concurrent (myThreadId)
 import Control.Concurrent.Async (Async, async, cancel, wait, waitAnyCancel)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO)
@@ -26,32 +26,11 @@ import System.Log.Bunyan
   , logDebug
   , logRecord
   )
-import Thunderbuns.Irc.Config (Server(..), connectionSettings)
-import Thunderbuns.Irc.Parser (Message(..), ircLine, parseMessage, quoteLastArg)
+import Thunderbuns.Irc.Types
+import Thunderbuns.Irc.Config
+import Thunderbuns.Irc.Parser (ircLine, parseMessage, quoteLastArg)
 import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.STM
-
--- | IrcServer Connection status
-data Status
-  = Disconnected
-  | Registration
-  | Connected
-
--- | IrcServer connection
-data Connection = Connection
-  { server :: !Server
-  , fromServer :: !(TChan Message)
-  , toServer :: !(TBQueue Command)
-  , status :: !(TVar Status)
-  , handler :: !(TMVar ThreadId)
-  }
-
--- | A command to the irc server
-data Command = Command
-  { cmdPrefix :: !(Maybe ByteString)
-  , cmdCmd :: !ByteString
-  , cmdArgs :: ![ByteString]
-  } deriving (Eq, Show)
 
 ircCmdLine :: Command -> ByteString
 ircCmdLine (Command pre cmd args) =
@@ -109,7 +88,8 @@ runConnection conn lg =
     --
     -- child loggers for various servers
     serverChildLogger :: T.Text -> IO Logger
-    serverChildLogger n = childLogger n (M.singleton "server" (A.String (host $ server conn))) lg
+    serverChildLogger n =
+      childLogger n (M.singleton "server" (A.String (host $ server conn))) lg
     -- wait for a shutdown because of socket closes
     -- first wait for end of registration task
     -- end of any ot the others means we go down
@@ -146,9 +126,10 @@ runConnection conn lg =
     --
     -- release the connection
     releaseConnection :: Bool -> IO ()
-    releaseConnection _ = atomically $ do
-      _ <- takeTMVar (handler conn)
-      writeTVar (status conn) Disconnected
+    releaseConnection _ =
+      atomically $ do
+        _ <- takeTMVar (handler conn)
+        writeTVar (status conn) Disconnected
 
 -- | Use a TBQueue as a conduit source.
 sourceTBQueue ::

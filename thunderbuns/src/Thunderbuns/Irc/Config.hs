@@ -5,6 +5,7 @@ import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import Dhall (Generic, Interpret)
 
+-- ! Server Configuration
 data Server = Server
   { host :: !Text
   , port :: !Integer
