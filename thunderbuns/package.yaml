@@ -24,19 +24,19 @@ dependencies:
 - aeson
 - async
 - attoparsec
-- base16-bytestring
-- base64-bytestring
+# - base16-bytestring
+# - base64-bytestring
 - bifunctors
-- binary
+# - binary
 - bunyan
 - bunyan-rio
 - bunyan-freer
 - bytestring
-- cereal
+# - cereal
 - conduit
 - conduit-extra # for Data.Conduit.Network
 - containers
-- cryptonite
+# - cryptonite
 - d64
 - dhall
 - freer-simple
@@ -58,12 +58,14 @@ dependencies:
 - transformers
 - unliftio
 - unordered-containers
-- uuid
+# - uuid
 - wai
 - wai-app-static
-- wai-middleware-prometheus
+# - wai-middleware-prometheus
 - wai-extra
+- wai-websockets
 - warp
+- websockets
 
 library:
   source-dirs: src

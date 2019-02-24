@@ -40,7 +40,7 @@ instance Interpret Config
 data Env = Env
   { envConfig :: Config
   , envLogger :: !Logger
-  , envConnection :: !Connection
+  , envIrcConnection :: !Connection
   , envLogQueue :: !(MVar A.Object)
   }
 

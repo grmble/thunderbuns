@@ -9,8 +9,8 @@
 .hsenv*
 .stack-work/
 .stack-work/
-/config
-/dist
+/frontend/dist
+/config.dhall
 TAGS
 x.*
 *.cabal

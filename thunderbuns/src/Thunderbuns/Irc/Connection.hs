@@ -4,7 +4,7 @@ module Thunderbuns.Irc.Connection where
 
 import Conduit (ConduitT, (.|), await, mapC, runConduit, yield)
 import Control.Concurrent (myThreadId)
-import Control.Concurrent.Async (Async, async, cancel, wait, waitAnyCancel)
+import Control.Concurrent.Async (Async, async, cancel, waitAnyCancel)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Aeson as A
@@ -25,10 +25,11 @@ import System.Log.Bunyan
   , childLogger
   , logDebug
   , logRecord
+  , modifyContext
   )
-import Thunderbuns.Irc.Types
 import Thunderbuns.Irc.Config
 import Thunderbuns.Irc.Parser (ircLine, parseMessage, quoteLastArg)
+import Thunderbuns.Irc.Types
 import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.STM
 
@@ -46,9 +47,10 @@ newConnection server = do
   handler <- newEmptyTMVarIO
   pure Connection {..}
 
-runConnection :: Connection -> Logger -> IO ()
-runConnection conn lg =
-  bracket reserveConnection releaseConnection handleConnection
+runIrcConnection :: Connection -> Logger -> IO ()
+runIrcConnection conn lgRoot = do
+  lg <- childLogger "thunderbuns.irc" lgRoot
+  bracket reserveConnection releaseConnection (handleConnection lg)
     --
     -- reserve the connection and start the handling threads
   where
@@ -65,63 +67,66 @@ runConnection conn lg =
           _ -> pure False
     --
     -- handle the connection
-    handleConnection :: Bool -> IO ()
-    handleConnection isReserved = do
+    handleConnection :: Logger -> Bool -> IO ()
+    handleConnection lg isReserved = do
       unless isReserved $
         throwString "can not reserve connection - not disconnected"
       runTCPClient (uncurry clientSettings (connectionSettings $ server conn)) $ \tcpConn ->
         bracket
-          (startBackgroundTasks tcpConn)
-          cancelBackgroundTasks
-          waitForBackgroundTasks
+          (startBackgroundTasks lg tcpConn)
+          (cancelBackgroundTasks lg)
+          (waitForBackgroundTasks lg)
     --
     -- start the background tasks
-    startBackgroundTasks tcpConn = do
+    startBackgroundTasks lg tcpConn = do
       rgchan <- atomically $ dupTChan (fromServer conn)
-      srcLg <- serverChildLogger "thunderbuns.fromServer"
+      srcLg <- serverChildLogger lg "thunderbuns.irc.fromServer"
       a1 <- async $ runConduitFromServer srcLg (appSource tcpConn)
-      sinkLg <- serverChildLogger "thunderbuns.toServer"
+      sinkLg <- serverChildLogger lg "thunderbuns.irc.toServer"
       a2 <- async $ runConduitToServer sinkLg (appSink tcpConn)
-      -- a3 <- async $ logFromServer rdchan
-      a4 <- async $ registerConnection rgchan
-      pure ([a1, a2], a4)
+      a3 <- async $ registerConnection rgchan
+      pure [a1, a2, a3]
     --
     -- child loggers for various servers
-    serverChildLogger :: T.Text -> IO Logger
-    serverChildLogger n =
-      childLogger n (M.singleton "server" (A.String (host $ server conn))) lg
+    serverChildLogger :: Logger -> T.Text -> IO Logger
+    serverChildLogger lg n =
+      modifyContext (M.insert "server" (A.String $ host $ server conn)) <$> childLogger n lg
     -- wait for a shutdown because of socket closes
     -- first wait for end of registration task
     -- end of any ot the others means we go down
-    waitForBackgroundTasks :: ([Async ()], Async ()) -> IO ()
-    waitForBackgroundTasks (as, rg) = do
-      wait rg
-      waitAnyCancel as $> ()
-    cancelBackgroundTasks :: ([Async ()], Async ()) -> IO ()
-    cancelBackgroundTasks (as, rg) = do
+    waitForBackgroundTasks :: Logger -> [Async ()] -> IO ()
+    waitForBackgroundTasks _ as = waitAnyCancel as $> ()
+    cancelBackgroundTasks :: Logger -> [Async ()] -> IO ()
+    cancelBackgroundTasks lg as = do
       logDebug "Canceling all background tasks" lg
-      cancel rg
       for_ as cancel
     -- register the connection
     registerConnection :: TChan Message -> IO ()
     registerConnection chan = do
-      let from = fromServer conn
       let to = toServer conn
       let n = T.encodeUtf8 $ nick $ server conn
       let fn = T.encodeUtf8 $ fullname $ server conn
       atomically $ writeTBQueue to (Command Nothing "NICK" [n])
       atomically $ writeTBQueue to (Command Nothing "USER" [n, "0", "*", fn])
       -- XXX: read result, 001 is good, 433 means nick has to be sent again
-      pure ()
+      pongPing n chan to
+    pongPing :: ByteString -> TChan Message -> TBQueue Command-> IO ()
+    pongPing nick chan to = do
+      msg <- atomically $ readTChan chan
+      case msgCmd msg of
+        Cmd "PING" ->
+          atomically $ writeTBQueue to (Command Nothing "PONG" [nick])
+        _ -> pure ()
+      pongPing nick chan to
     -- read from the server and broadcast the parsed messages
     runConduitFromServer :: Logger -> ConduitT () ByteString IO () -> IO ()
-    runConduitFromServer lg src = do
+    runConduitFromServer lg src =
       runConduit $
-        src .| CA.conduitParser parseMessage .| mapC snd .|
-        sinkTChan (fromServer conn) lg
+      src .| CA.conduitParser parseMessage .| mapC snd .|
+      sinkTChan (fromServer conn) lg
     -- from the command queue and send to server
     runConduitToServer :: Logger -> ConduitT ByteString Void IO () -> IO ()
-    runConduitToServer lg sink = do
+    runConduitToServer lg sink =
       runConduit $ sourceTBQueue (toServer conn) lg .| mapC ircCmdLine .| sink
     --
     -- release the connection
@@ -136,7 +141,7 @@ sourceTBQueue ::
      MonadIO m => TBQueue Command -> Logger -> ConduitT () Command m ()
 sourceTBQueue q lg = do
   a <- atomically $ readTBQueue q
-  logRecord DEBUG M.empty (ircCmdLine a) lg
+  logRecord DEBUG id (ircCmdLine a) lg
   yield a
   sourceTBQueue q lg
 
@@ -146,6 +151,6 @@ sinkTChan chan lg =
   await >>= \case
     Nothing -> pure ()
     Just msg -> do
-      logRecord DEBUG M.empty (ircLine msg) lg
+      logRecord DEBUG id (ircLine msg) lg
       atomically $ writeTChan chan msg
       sinkTChan chan lg
