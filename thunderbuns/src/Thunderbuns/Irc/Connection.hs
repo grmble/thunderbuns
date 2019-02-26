@@ -28,15 +28,10 @@ import System.Log.Bunyan
   , modifyContext
   )
 import Thunderbuns.Irc.Config
-import Thunderbuns.Irc.Parser (ircLine, parseMessage, quoteLastArg)
+import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage, quoteLastArg)
 import Thunderbuns.Irc.Types
 import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.STM
-
-ircCmdLine :: Command -> ByteString
-ircCmdLine (Command pre cmd args) =
-  let lst = maybe [] (pure . (<>) ":") pre ++ cmd : args
-   in B.intercalate " " (quoteLastArg lst) <> "\r\n"
 
 -- | Create a new, disconnected connection
 newConnection :: Server -> IO Connection
@@ -109,6 +104,7 @@ runIrcConnection conn lgRoot = do
       atomically $ writeTBQueue to (Command Nothing "NICK" [n])
       atomically $ writeTBQueue to (Command Nothing "USER" [n, "0", "*", fn])
       -- XXX: read result, 001 is good, 433 means nick has to be sent again
+      atomically $ writeTVar (status conn) Connected
       pongPing n chan to
     pongPing :: ByteString -> TChan Message -> TBQueue Command-> IO ()
     pongPing nick chan to = do
@@ -154,3 +150,14 @@ sinkTChan chan lg =
       logRecord DEBUG id (ircLine msg) lg
       atomically $ writeTChan chan msg
       sinkTChan chan lg
+
+-- | Send a command to the irc server
+--
+-- Returns true if the message was queued, false if the server
+-- is not currently connected (in which case the message was not queued)
+sendCommand :: Connection -> Command -> IO Bool
+sendCommand conn cmd =
+  atomically (readTVar (status conn)) >>= \case
+    Connected ->
+      atomically (writeTBQueue (toServer conn) cmd) $> True
+    _ -> pure False

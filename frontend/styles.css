@@ -1,0 +1,53 @@
+/*
+
+box model reset - border box everywhere
+
+this makes it much easier to mix paddings/margin and
+grid classes
+
+*/
+html {
+    box-sizing: border-box;
+}
+*, *:before, *:after {
+    box-sizing: inherit;
+}
+
+
+/* channel content display should span whole window height */
+html, body, #main, #bonsai-main  {
+    min-height: 100%;
+    height: 100%;
+}
+
+#content {
+    display: flex;
+    flex-direction: column;
+    /* XXX it's better than anything else i've come up with */
+    height: 90%;
+}
+
+.l-stretch {
+    flex: 1 1 auto;
+    overflow-y: scroll;
+}
+
+.l-box {
+    padding: 1em;
+}
+
+.lr-box {
+    padding: 0 1em;
+}
+
+.l-plainlist {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+.l-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

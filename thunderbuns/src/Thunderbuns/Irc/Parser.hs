@@ -11,6 +11,17 @@ import Data.String (fromString)
 import qualified Data.Word as W
 import Thunderbuns.Irc.Types
 
+-- | Parse a message from an irc server
+--
+-- The message is expected as on-the-wire.  it must be
+-- terminated by CR LF
+parseMessage :: Parser Message
+parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs
+
+-- | Bytestring representation of a parsed IRC message.
+--
+-- The string will be terminated by CR LF.  This bytestring
+-- can be sent to an IRC server.
 ircLine :: Message -> ByteString
 ircLine (Message pre cmd args) =
   let cmdStr =
@@ -18,6 +29,16 @@ ircLine (Message pre cmd args) =
           Response code -> fromString $ show $ fromCode code
           Cmd bs -> bs
       lst = maybe [] (pure . (<>) ":") pre ++ cmdStr : args
+   in B.intercalate " " (quoteLastArg lst) <> "\r\n"
+
+-- | Parse an irc command
+parseCommand :: Parser Command
+parseCommand = Command <$> parsePrefix <*> token middle <*> parseArgs'
+
+-- | Bytestring representation of a Command
+ircCmdLine :: Command -> ByteString
+ircCmdLine (Command pre cmd args) =
+  let lst = maybe [] (pure . (<>) ":") pre ++ cmd : args
    in B.intercalate " " (quoteLastArg lst) <> "\r\n"
 
 quoteLastArg :: [ByteString] -> [ByteString]
@@ -42,9 +63,6 @@ toCode x = NumericCode x
 isErrorCode :: Code -> Bool
 isErrorCode c = fromCode c >= 400
 
-parseMessage :: Parser Message
-parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs
-
 parsePrefix :: Parser (Maybe ByteString)
 parsePrefix =
   option Nothing (fmap Just (token (char ':' *> takeWhile1 notSpCrLfCl)))
@@ -58,6 +76,9 @@ parseCmd =
 
 parseArgs :: Parser [ByteString]
 parseArgs = many (trailing <|> token middle) <* crLf
+
+parseArgs' :: Parser [ByteString]
+parseArgs' = many (trailing <|> token middle) <* option () crLf
 
 token :: Parser a -> Parser a
 token p = p <* skipMany (char ' ')

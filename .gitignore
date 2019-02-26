@@ -9,7 +9,6 @@
 .hsenv*
 .stack-work/
 .stack-work/
-/frontend/dist
 /config.dhall
 TAGS
 x.*
