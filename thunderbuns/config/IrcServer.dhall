@@ -4,7 +4,7 @@
 -- if nicksrvPassword is blank, not idenitify msg will be sent.
 { host : Text
 , port : Integer
-, ssl: Bool
+, tls: Bool
 , serverPassword: Text
 , nick: Text
 , fullname: Text

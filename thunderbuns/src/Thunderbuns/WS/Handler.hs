@@ -12,7 +12,7 @@ import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
-import System.Log.Bunyan.RIO (MonadBunyan, logDebug)
+import System.Log.Bunyan.RIO (MonadBunyan, logDebug, logTrace)
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
@@ -112,5 +112,5 @@ sendResponse ::
 sendResponse gc msg = do
   let msg' =
         W.ResponseWithID Nothing $ W.GenericMessage (toText $ I.ircLine msg)
-  logDebug ("A message from our server: " <> toText (A.encode msg'))
+  logTrace ("A message from our server: " <> toText (A.encode msg'))
   sendGuardedTextData gc (A.encode msg')

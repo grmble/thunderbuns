@@ -9,7 +9,7 @@ import Dhall (Generic, Interpret)
 data Server = Server
   { host :: !Text
   , port :: !Integer
-  , ssl :: !Bool
+  , tls :: !Bool
   , serverPassword :: !Text
   , nick :: !Text
   , fullname :: !Text

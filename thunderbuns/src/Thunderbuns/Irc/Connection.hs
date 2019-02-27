@@ -22,19 +22,15 @@ import qualified Data.Conduit.Network.TLS as CT
 import Data.Foldable (for_)
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
-import Data.Monoid ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Void (Void)
 import System.Log.Bunyan.RIO
-  ( Logger
-  , MonadBunyan
+  ( MonadBunyan
   , Priority(..)
-  , childLogger
   , localLogger
   , logDebug
   , logRecord
-  , modifyContext
   )
 import Thunderbuns.Irc.Config
 import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
@@ -80,12 +76,13 @@ runIrcConnection conn =
     handleConnection isReserved = do
       unless isReserved $
         throwString "can not reserve connection - not disconnected"
-      CN.runGeneralTCPClient
-        (uncurry CN.clientSettings (connectionSettings $ server conn)) $ \tcpConn ->
-        bracket
-          (startBackgroundTasks tcpConn)
-          cancelBackgroundTasks
-          waitForBackgroundTasks
+      logDebug "establishing connection to irc server"
+      let cfg = uncurry CT.tlsClientConfig (connectionSettings $ server conn)
+      CT.runTLSClient (cfg {CT.tlsClientUseTLS = tls $ server conn})$ \tcpConn ->
+          bracket
+            (startBackgroundTasks tcpConn)
+            cancelBackgroundTasks
+            waitForBackgroundTasks
     --
     -- start the background tasks
     startBackgroundTasks :: CN.AppData -> m [Async ()]
