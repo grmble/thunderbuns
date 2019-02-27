@@ -1,10 +1,15 @@
-{-# LANGUAGE RecordWildCards #-}
-
+-- | Call in from the command line
+--
+-- Here all the parts are wired together:
+-- WAI, WebSockets, connection to the IRC network.
+--
+-- No MonadBunyan here - it's easiest to stay in IO
+-- and call into the various other stacks.
 module Thunderbuns.CmdLine where
 
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (Async, async, cancel)
 import Control.Monad (forever)
+import Control.Monad.Reader (runReaderT)
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
@@ -32,6 +37,8 @@ import Thunderbuns.WS.Handler
   , sendGuardedPing
   , sendResponse
   )
+import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
+import UnliftIO.Async (Async, async, cancel)
 import UnliftIO.Exception (IOException, bracket, catchIO, finally)
 import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import UnliftIO.STM (TChan, atomically, dupTChan, readTChan)
@@ -41,32 +48,34 @@ initialEnv = do
   envConfig <- input auto "./config.dhall"
   envLogQueue <- newEmptyMVar
   let pri = textToPriority (C.priority $ C.logging envConfig)
-  envLogger <- rootLogger "thunderbuns.root" pri (putMVar envLogQueue)
+  _envLogger <- rootLogger "thunderbuns.root" pri (putMVar envLogQueue)
   envIrcConnection <- I.newConnection (C.server envConfig)
-  pure C.Env {..}
+  pure C.Env {C.envConfig, C.envLogQueue, C._envLogger, C.envIrcConnection}
 
 runMain :: IO ()
 runMain = do
-  C.Env {..} <- initialEnv
+  env <- initialEnv
+  let C.Env {C.envConfig, C.envLogQueue, C.envIrcConnection, C._envLogger} = env
   withLogWriter envLogQueue (C.filename $ C.logging envConfig) $
     bracket
-      (async $ I.runIrcConnection envIrcConnection envLogger)
-      (logAndCancel "Canceling IRC Connection" envLogger)
-      (const $ runWebServer (C.http envConfig) envIrcConnection envLogger)
+      (async $ runReaderT (I.runIrcConnection envIrcConnection) env)
+      (logAndCancel "Canceling IRC Connection" _envLogger)
+      (const $ runWebServer (C.http envConfig) envIrcConnection _envLogger)
 
-logAndCancel :: T.Text -> Logger -> Async a -> IO ()
+logAndCancel :: MonadIO m => T.Text -> Logger -> Async a -> m ()
 logAndCancel msg lg a = do
   logInfo msg lg
   cancel a
 
-runWebServer :: C.HttpConfig -> I.Connection -> Logger -> IO ()
-runWebServer C.HttpConfig {..} irccon lg = do
-  let p = fromIntegral port :: Int
-  let dir = T.unpack staticDir :: FilePath
-  lg' <- childLogger "thunderbuns.http" lg
-  logInfo (T.pack $ "Serving HTTP on port " <> show p) lg'
-  run p (mainApplication dir irccon lg') `finally`
-    logInfo (T.pack $ "Stopping HTTP on port " <> show p) lg
+runWebServer ::
+     MonadUnliftIO m => C.HttpConfig -> I.Connection -> Logger -> m ()
+runWebServer C.HttpConfig {C.port, C.staticDir} irccon =
+  localLogger "thunderbuns.http" id $ \lg -> do
+    let p = fromIntegral port :: Int
+    let dir = T.unpack staticDir :: FilePath
+    logInfo (T.pack $ "Serving HTTP on port " <> show p) lg
+    liftIO (run p (mainApplication dir irccon lg)) `finally`
+      logInfo (T.pack $ "Stopping HTTP on port " <> show p) lg
 
 mainApplication :: FilePath -> I.Connection -> Logger -> Application
 mainApplication fp irccon = logResponseTime serve
@@ -79,14 +88,17 @@ mainApplication fp irccon = logResponseTime serve
         (staticApp $ defaultWebAppSettings fp)
 
 wsApplication :: I.Connection -> Logger -> ServerApp
-wsApplication irccon lgRoot pending = do
-  lg <- childLogger "thunderbuns.ws" lgRoot
-  gc <- acceptRequest pending >>= guardedConnection
-  logInfo "Connection accepted, starting ping/irc subscription threads" lg
-  bracket (startThreads lg gc) (stopThreads lg) (const $ handleConn irccon lg gc)
+wsApplication irccon lgX pending =
+  flip (localLogger "thunderbuns.ws" id) lgX $ \lg -> do
+    gc <- acceptRequest pending >>= guardedConnection
+    logInfo "Connection accepted, starting ping/irc subscription threads" lg
+    bracket
+      (startThreads gc lg)
+      (stopThreads lg)
+      (const $ runReaderT (handleConn irccon gc) lg)
   where
-    startThreads :: Logger -> GuardedConnection -> IO (Async (), Async ())
-    startThreads lg gc = do
+    startThreads :: GuardedConnection -> Logger -> IO (Async (), Async ())
+    startThreads gc lg = do
       a1 <- async $ pingThread gc 0
       ch <- atomically $ dupTChan (I.fromServer irccon)
       a2 <- async $ ircSubscription ch gc lg
@@ -104,7 +116,7 @@ wsApplication irccon lgRoot pending = do
     ircSubscription chan gc lg =
       forever $ do
         msg <- atomically $ readTChan chan
-        sendResponse lg gc msg
+        runReaderT (sendResponse gc msg) lg
 
 --
 -- XXX consider promoting these to bunyan
@@ -147,6 +159,18 @@ withLogWriter q fp action = bracket (async $ logTo fp) cancel (const action)
       LB.hPut handle (A.encode x <> "\n")
       go handle
 
+localLogger ::
+     MonadUnliftIO m
+  => Text
+  -> (A.Object -> A.Object)
+  -> (Logger -> m a)
+  -> Logger
+  -> m a
+localLogger n ctxfn action lg = do
+  lg' <- childLogger' n ctxfn lg
+  action lg'
+
+-- XXX fix in bunyan (improve logDuration with a final modification of the context)
 logResponseTime :: (Logger -> Application) -> Logger -> Application
 logResponseTime app lg req respond = do
   start <- getLoggingTime

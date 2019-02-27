@@ -2,16 +2,23 @@
 
 module Thunderbuns.Irc.Connection where
 
-import Conduit (ConduitT, (.|), await, mapC, runConduit, yield)
+import Conduit
+  ( ConduitT
+  , MonadThrow
+  , (.|)
+  , await
+  , lift
+  , mapC
+  , runConduit
+  , yield
+  )
 import Control.Concurrent (myThreadId)
-import Control.Concurrent.Async (Async, async, cancel, waitAnyCancel)
 import Control.Monad (unless)
-import Control.Monad.IO.Class (MonadIO)
 import qualified Data.Aeson as A
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as B
 import qualified Data.Conduit.Attoparsec as CA
-import Data.Conduit.Network (appSink, appSource, clientSettings, runTCPClient)
+import qualified Data.Conduit.Network as CN
+import qualified Data.Conduit.Network.TLS as CT
 import Data.Foldable (for_)
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
@@ -19,22 +26,26 @@ import Data.Monoid ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Void (Void)
-import System.Log.Bunyan
+import System.Log.Bunyan.RIO
   ( Logger
+  , MonadBunyan
   , Priority(..)
   , childLogger
+  , localLogger
   , logDebug
   , logRecord
   , modifyContext
   )
 import Thunderbuns.Irc.Config
-import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage, quoteLastArg)
+import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
 import Thunderbuns.Irc.Types
+import UnliftIO (MonadIO(..), MonadUnliftIO(..))
+import UnliftIO.Async (Async, async, cancel, waitAnyCancel)
 import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.STM
 
 -- | Create a new, disconnected connection
-newConnection :: Server -> IO Connection
+newConnection :: MonadIO m => Server -> m Connection
 newConnection server = do
   status <- newTVarIO Disconnected
   fromServer <- newBroadcastTChanIO
@@ -42,16 +53,19 @@ newConnection server = do
   handler <- newEmptyTMVarIO
   pure Connection {..}
 
-runIrcConnection :: Connection -> Logger -> IO ()
-runIrcConnection conn lgRoot = do
-  lg <- childLogger "thunderbuns.irc" lgRoot
-  bracket reserveConnection releaseConnection (handleConnection lg)
+runIrcConnection ::
+     forall r m. (MonadThrow m, MonadUnliftIO m, MonadBunyan r m)
+  => Connection
+  -> m ()
+runIrcConnection conn =
+  localLogger "thunderbuns.irc" id $
+  bracket reserveConnection releaseConnection handleConnection
     --
     -- reserve the connection and start the handling threads
   where
-    reserveConnection :: IO Bool
+    reserveConnection :: m Bool
     reserveConnection = do
-      tid <- myThreadId
+      tid <- liftIO myThreadId
       atomically $ do
         st <- readTVar (status conn)
         case st of
@@ -62,41 +76,47 @@ runIrcConnection conn lgRoot = do
           _ -> pure False
     --
     -- handle the connection
-    handleConnection :: Logger -> Bool -> IO ()
-    handleConnection lg isReserved = do
+    handleConnection :: Bool -> m ()
+    handleConnection isReserved = do
       unless isReserved $
         throwString "can not reserve connection - not disconnected"
-      runTCPClient (uncurry clientSettings (connectionSettings $ server conn)) $ \tcpConn ->
+      CN.runGeneralTCPClient
+        (uncurry CN.clientSettings (connectionSettings $ server conn)) $ \tcpConn ->
         bracket
-          (startBackgroundTasks lg tcpConn)
-          (cancelBackgroundTasks lg)
-          (waitForBackgroundTasks lg)
+          (startBackgroundTasks tcpConn)
+          cancelBackgroundTasks
+          waitForBackgroundTasks
     --
     -- start the background tasks
-    startBackgroundTasks lg tcpConn = do
+    startBackgroundTasks :: CN.AppData -> m [Async ()]
+    startBackgroundTasks tcpConn = do
       rgchan <- atomically $ dupTChan (fromServer conn)
-      srcLg <- serverChildLogger lg "thunderbuns.irc.fromServer"
-      a1 <- async $ runConduitFromServer srcLg (appSource tcpConn)
-      sinkLg <- serverChildLogger lg "thunderbuns.irc.toServer"
-      a2 <- async $ runConduitToServer sinkLg (appSink tcpConn)
+      a1 <-
+        async $
+        serverLogger "thunderbuns.irc.fromServer" $
+        runConduitFromServer (CN.appSource tcpConn)
+      a2 <-
+        async $
+        serverLogger "thunderbuns.irc.toServer" $
+        runConduitToServer (CN.appSink tcpConn)
       a3 <- async $ registerConnection rgchan
       pure [a1, a2, a3]
     --
     -- child loggers for various servers
-    serverChildLogger :: Logger -> T.Text -> IO Logger
-    serverChildLogger lg n =
-      modifyContext (M.insert "server" (A.String $ host $ server conn)) <$> childLogger n lg
+    serverLogger :: T.Text -> m a -> m a
+    serverLogger n =
+      localLogger n (M.insert "server" (A.String $ host $ server conn))
     -- wait for a shutdown because of socket closes
     -- first wait for end of registration task
     -- end of any ot the others means we go down
-    waitForBackgroundTasks :: Logger -> [Async ()] -> IO ()
-    waitForBackgroundTasks _ as = waitAnyCancel as $> ()
-    cancelBackgroundTasks :: Logger -> [Async ()] -> IO ()
-    cancelBackgroundTasks lg as = do
-      logDebug "Canceling all background tasks" lg
+    waitForBackgroundTasks :: [Async ()] -> m ()
+    waitForBackgroundTasks as = waitAnyCancel as $> ()
+    cancelBackgroundTasks :: [Async ()] -> m ()
+    cancelBackgroundTasks as = do
+      logDebug "Canceling all background tasks"
       for_ as cancel
     -- register the connection
-    registerConnection :: TChan Message -> IO ()
+    registerConnection :: TChan Message -> m ()
     registerConnection chan = do
       let to = toServer conn
       let n = T.encodeUtf8 $ nick $ server conn
@@ -106,7 +126,7 @@ runIrcConnection conn lgRoot = do
       -- XXX: read result, 001 is good, 433 means nick has to be sent again
       atomically $ writeTVar (status conn) Connected
       pongPing n chan to
-    pongPing :: ByteString -> TChan Message -> TBQueue Command-> IO ()
+    pongPing :: ByteString -> TChan Message -> TBQueue Command -> m ()
     pongPing nick chan to = do
       msg <- atomically $ readTChan chan
       case msgCmd msg of
@@ -115,18 +135,18 @@ runIrcConnection conn lgRoot = do
         _ -> pure ()
       pongPing nick chan to
     -- read from the server and broadcast the parsed messages
-    runConduitFromServer :: Logger -> ConduitT () ByteString IO () -> IO ()
-    runConduitFromServer lg src =
+    runConduitFromServer :: ConduitT () ByteString m () -> m ()
+    runConduitFromServer src =
       runConduit $
       src .| CA.conduitParser parseMessage .| mapC snd .|
-      sinkTChan (fromServer conn) lg
+      sinkTChan (fromServer conn)
     -- from the command queue and send to server
-    runConduitToServer :: Logger -> ConduitT ByteString Void IO () -> IO ()
-    runConduitToServer lg sink =
-      runConduit $ sourceTBQueue (toServer conn) lg .| mapC ircCmdLine .| sink
+    runConduitToServer :: ConduitT ByteString Void m () -> m ()
+    runConduitToServer sink =
+      runConduit $ sourceTBQueue (toServer conn) .| mapC ircCmdLine .| sink
     --
     -- release the connection
-    releaseConnection :: Bool -> IO ()
+    releaseConnection :: Bool -> m ()
     releaseConnection _ =
       atomically $ do
         _ <- takeTMVar (handler conn)
@@ -134,30 +154,34 @@ runIrcConnection conn lgRoot = do
 
 -- | Use a TBQueue as a conduit source.
 sourceTBQueue ::
-     MonadIO m => TBQueue Command -> Logger -> ConduitT () Command m ()
-sourceTBQueue q lg = do
+     (MonadUnliftIO m, MonadBunyan r m)
+  => TBQueue Command
+  -> ConduitT () Command m ()
+sourceTBQueue q = do
   a <- atomically $ readTBQueue q
-  logRecord DEBUG id (ircCmdLine a) lg
+  lift $ logRecord DEBUG id (ircCmdLine a)
   yield a
-  sourceTBQueue q lg
+  sourceTBQueue q
 
 -- | Use a TChan as a conduit sink.
-sinkTChan :: MonadIO m => TChan Message -> Logger -> ConduitT Message Void m ()
-sinkTChan chan lg =
+sinkTChan ::
+     (MonadUnliftIO m, MonadBunyan r m)
+  => TChan Message
+  -> ConduitT Message Void m ()
+sinkTChan chan =
   await >>= \case
     Nothing -> pure ()
     Just msg -> do
-      logRecord DEBUG id (ircLine msg) lg
+      lift $ logRecord DEBUG id (ircLine msg)
       atomically $ writeTChan chan msg
-      sinkTChan chan lg
+      sinkTChan chan
 
 -- | Send a command to the irc server
 --
 -- Returns true if the message was queued, false if the server
 -- is not currently connected (in which case the message was not queued)
-sendCommand :: Connection -> Command -> IO Bool
+sendCommand :: MonadUnliftIO m => Connection -> Command -> m Bool
 sendCommand conn cmd =
   atomically (readTVar (status conn)) >>= \case
-    Connected ->
-      atomically (writeTBQueue (toServer conn) cmd) $> True
+    Connected -> atomically (writeTBQueue (toServer conn) cmd) $> True
     _ -> pure False

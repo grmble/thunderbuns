@@ -47,6 +47,7 @@ dependencies:
 - lens  # it's pulled in by dhall (i think), we might as well use it
 - mtl
 - network
+- network-conduit-tls
 - optparse-applicative
 - persistent
 - persistent-sqlite

@@ -1,13 +1,14 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Thunderbuns.Config where
 
+import Control.Lens.TH (makeClassy)
 import qualified Data.Aeson as A
 import Data.Text (Text)
 import Dhall (Generic, Interpret)
+import System.Log.Bunyan.RIO (HasLogger(..), Logger)
 import qualified Thunderbuns.Irc.Config as IC
 import Thunderbuns.Irc.Types
-import System.Log.Bunyan (Logger)
 import UnliftIO.MVar
 
 -- | Logging Configuration
@@ -39,12 +40,17 @@ instance Interpret Config
 
 data Env = Env
   { envConfig :: Config
-  , envLogger :: !Logger
+  , _envLogger :: !Logger
   , envIrcConnection :: !Connection
   , envLogQueue :: !(MVar A.Object)
   }
 
+$(makeClassy ''Env)
+
 instance Show Env where
-  show Env {..} =
+  show Env {envConfig, _envLogger} =
     "{envConfig = " ++
-    show envConfig ++ "\n  , envLogger = " ++ show envLogger ++ "}"
+    show envConfig ++ "\n  , envLogger = " ++ show _envLogger ++ "}"
+
+instance HasLogger Env where
+  logger = envLogger
