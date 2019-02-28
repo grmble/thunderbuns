@@ -18,18 +18,23 @@ import Thunderbuns.Irc.Types
 parseMessage :: Parser Message
 parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs
 
+-- | Return the offending line in case the message could not be parsed
+parseMessageOrLine :: Parser (Either ByteString Message)
+parseMessageOrLine = Right <$> parseMessage <|> Left <$> parseLine
+
 -- | Bytestring representation of a parsed IRC message.
 --
 -- The string will be terminated by CR LF.  This bytestring
 -- can be sent to an IRC server.
 ircLine :: Message -> ByteString
 ircLine (Message pre cmd args) =
-  let cmdStr =
-        case cmd of
-          Response code -> fromString $ show $ fromCode code
-          Cmd bs -> bs
+  let cmdStr = ircCmd cmd
       lst = maybe [] (pure . (<>) ":") pre ++ cmdStr : args
    in B.intercalate " " (quoteLastArg lst) <> "\r\n"
+
+ircCmd :: Cmd -> ByteString
+ircCmd (Response code) = fromString $ show $ fromCode code
+ircCmd (Cmd bs) = bs
 
 -- | Parse an irc command
 parseCommand :: Parser Command
@@ -39,7 +44,10 @@ parseCommand = Command <$> parsePrefix <*> token middle <*> parseArgs'
 ircCmdLine :: Command -> ByteString
 ircCmdLine (Command pre cmd args) =
   let lst = maybe [] (pure . (<>) ":") pre ++ cmd : args
-   in B.intercalate " " (quoteLastArg lst) <> "\r\n"
+   in ircArgs lst <> "\r\n"
+
+ircArgs :: [ByteString] -> ByteString
+ircArgs = B.intercalate " " . quoteLastArg
 
 quoteLastArg :: [ByteString] -> [ByteString]
 quoteLastArg [] = []
@@ -112,7 +120,7 @@ skipCrLf :: Parser ()
 skipCrLf = skipMany1 crLf
 
 parseLine :: Parser ByteString
-parseLine = Atto.takeWhile (/= 0x0a) <* word8 0x0a
+parseLine = B.snoc <$> Atto.takeWhile (/= 0x0a) <*> word8 0x0a
 
 c2w :: Char -> W.Word8
 c2w = toEnum . fromEnum

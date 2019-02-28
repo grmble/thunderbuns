@@ -3,18 +3,21 @@ module Thunderfront.View where
 import Prelude
 
 import Bonsai (Cmd)
+import Bonsai.EventHandlers (enterEscapeKey)
 import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!))
 import Bonsai.Html.Attributes (cls, id_, href, typ, value)
 import Bonsai.Html.Events (onClickPreventDefault, onInput, onKeyEnter)
-import Bonsai.EventHandlers (enterEscapeKey)
 import Control.Plus (empty)
 import Data.Either (Either(..))
 import Data.Foldable (for_)
 import Data.Lens (view)
+import Data.Lens.Index (ix)
+import Data.Map as M
 import Data.Maybe (Maybe(..))
+import Data.Newtype (unwrap)
 import Foreign (Foreign, F)
 import Thunderfront.Forms.Login (loginForm)
-import Thunderfront.Types.Model (Model, CurrentView(..), activeChannel, channels, channelName, currentView, inputModel, messages)
+import Thunderfront.Types.Model (CurrentView(..), Model, NickAndMsg(..), activeChannel, channelMessages, channelName, currentView, inputModel, messages)
 import Thunderfront.Types.Msg (Msg(..))
 import Thunderfront.Types.WS as WS
 
@@ -65,10 +68,10 @@ viewChannels model = do
   div_ ! id_ "channels" ! cls "l-box pure-u-1-3 pure-u-md-1-6 pure-menu" $ do
     span ! cls "pure-menu-heading" $ text "Channels"
     ul ! cls "l-plainlist" $
-    for_ (view channels model) $ \c -> do
+    for_ (M.keys (view channelMessages model)) $ \c -> do
       li ! cls (menuItemClasses c) $
         a ! cls "pure-menu-link" ! href "#"
-          -- ! XXX: NO ACTION onClickPreventDefault (ActiveChannelMsg c)
+          ! onClickPreventDefault (ActiveChannelMsg (Just c))
           $ text (view channelName c)
   where
     menuItemClasses current =
@@ -81,7 +84,7 @@ viewActiveChannel model =
   div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-u-md-5-6" $ do
     ul ! id_ "messages"
       ! cls "l-plainlist l-stretch" $
-      for_ (view messages model) $ li <<< text
+      viewChannel (view activeChannel model)
     div_ ! cls "pure-form" $
       input ! id_ "msgInput"
         ! cls "pure-u-1 pure-input"
@@ -89,6 +92,15 @@ viewActiveChannel model =
         ! value (view inputModel model)
         ! onInput MessageInputMsg
         ! onKeyEnter (\s -> RequestMsg $ (WS.GenericCommand { cmd: s }))
+  where
+    viewChannel Nothing =
+      for_ (view messages model) $ li <<< text
+    viewChannel (Just channel) =
+      for_ (view (channelMessages <<< ix channel) model) $ \(NickAndMsg{nick, msg}) ->
+        li $ do
+          span ! cls "l-user" $ text (unwrap nick)
+          text ":"
+          span $ text msg
 
 -- | Event handler for enter key. XXX PROMOTE
 rawEnterKeyHandler :: forall msg. (String -> F (Cmd msg)) -> Foreign -> F (Cmd msg)
@@ -102,3 +114,4 @@ viewDebug :: Model -> Markup Msg
 viewDebug model = do
   div_ ! cls "l-box pure-u-1" $ do
     div_ $ text "DEBUG PANE"
+

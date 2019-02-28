@@ -31,7 +31,7 @@ data HttpConfig = HttpConfig
 instance Interpret HttpConfig
 
 data Config = Config
-  { server :: !IC.Server
+  { server :: !IC.ServerConfig
   , logging :: !LogConfig
   , http :: !HttpConfig
   } deriving (Show, Eq, Generic)

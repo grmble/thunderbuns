@@ -13,7 +13,8 @@ import Conduit
   , yield
   )
 import Control.Concurrent (myThreadId)
-import Control.Monad (unless)
+import Control.Exception (SomeException)
+import Control.Monad (forever, unless)
 import qualified Data.Aeson as A
 import Data.ByteString (ByteString)
 import qualified Data.Conduit.Attoparsec as CA
@@ -22,9 +23,11 @@ import qualified Data.Conduit.Network.TLS as CT
 import Data.Foldable (for_)
 import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
+import Data.Monoid ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Void (Void)
+import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
   ( MonadBunyan
   , Priority(..)
@@ -33,15 +36,15 @@ import System.Log.Bunyan.RIO
   , logRecord
   )
 import Thunderbuns.Irc.Config
-import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
+import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessageOrLine)
 import Thunderbuns.Irc.Types
 import UnliftIO (MonadIO(..), MonadUnliftIO(..))
-import UnliftIO.Async (Async, async, cancel, waitAnyCancel)
+import UnliftIO.Async (Async, async, cancel, waitAnyCatchCancel)
 import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.STM
 
 -- | Create a new, disconnected connection
-newConnection :: MonadIO m => Server -> m Connection
+newConnection :: MonadIO m => ServerConfig -> m Connection
 newConnection server = do
   status <- newTVarIO Disconnected
   fromServer <- newBroadcastTChanIO
@@ -78,11 +81,11 @@ runIrcConnection conn =
         throwString "can not reserve connection - not disconnected"
       logDebug "establishing connection to irc server"
       let cfg = uncurry CT.tlsClientConfig (connectionSettings $ server conn)
-      CT.runTLSClient (cfg {CT.tlsClientUseTLS = tls $ server conn})$ \tcpConn ->
-          bracket
-            (startBackgroundTasks tcpConn)
-            cancelBackgroundTasks
-            waitForBackgroundTasks
+      CT.runTLSClient (cfg {CT.tlsClientUseTLS = tls $ server conn}) $ \tcpConn ->
+        bracket
+          (startBackgroundTasks tcpConn)
+          cancelBackgroundTasks
+          waitForBackgroundTasks
     --
     -- start the background tasks
     startBackgroundTasks :: CN.AppData -> m [Async ()]
@@ -107,7 +110,14 @@ runIrcConnection conn =
     -- first wait for end of registration task
     -- end of any ot the others means we go down
     waitForBackgroundTasks :: [Async ()] -> m ()
-    waitForBackgroundTasks as = waitAnyCancel as $> ()
+    waitForBackgroundTasks as =
+      waitAnyCatchCancel as >>= \case
+        (_, Right ()) -> pure ()
+        (_, Left ex) ->
+          logRecord
+            ERROR
+            (exceptionContext ex)
+            ("Exception caught from background task: " <> show ex)
     cancelBackgroundTasks :: [Async ()] -> m ()
     cancelBackgroundTasks as = do
       logDebug "Canceling all background tasks"
@@ -135,8 +145,20 @@ runIrcConnection conn =
     runConduitFromServer :: ConduitT () ByteString m () -> m ()
     runConduitFromServer src =
       runConduit $
-      src .| CA.conduitParser parseMessage .| mapC snd .|
+      src .| CA.conduitParser parseMessageOrLine .| mapC snd .| filterErrorLines .|
       sinkTChan (fromServer conn)
+    -- filter out and log error lines
+    filterErrorLines =
+      forever $
+      await >>= \case
+        Nothing -> pure ()
+        Just (Left bs) ->
+          lift $
+          logRecord
+            WARN
+            (M.insert "line" (A.String $ toText bs))
+            ("Can not parse line: " <> toText (show bs))
+        Just (Right msg) -> yield msg
     -- from the command queue and send to server
     runConduitToServer :: ConduitT ByteString Void m () -> m ()
     runConduitToServer sink =
@@ -182,3 +204,8 @@ sendCommand conn cmd =
   atomically (readTVar (status conn)) >>= \case
     Connected -> atomically (writeTBQueue (toServer conn) cmd) $> True
     _ -> pure False
+
+--- XXX promote
+exceptionContext :: SomeException -> A.Object -> A.Object
+exceptionContext ex =
+  M.insert "err" (A.Object $ M.singleton "msg" (A.String (T.pack $ show ex)))

@@ -6,13 +6,17 @@ import Control.Monad (forever)
 import Control.Monad.Except
 import qualified Data.Aeson as A
 import Data.Attoparsec.ByteString (endOfInput, parseOnly)
+import qualified Data.Attoparsec.Text as Atto
+import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
 import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO (MonadBunyan, logDebug, logTrace)
+import qualified Thunderbuns.Irc.Config as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
@@ -88,7 +92,8 @@ handleRequest irc rqid = go
     go (W.GenericCommand cmd) = do
       cmd' <- parseCommand cmd
       sendCommand cmd'
-      pure $ W.ResponseWithID rqid $ W.GenericMessage cmd
+      let own = fakeOwnFrom (I.server irc)
+      pure $ W.ResponseWithID rqid (classifyIrcCommand own cmd')
     go W.ChannelCommand {} = throwError (rqid, "IMPLEMENT ChannelCommand")
     parseCommand :: Text -> EIO m I.Command
     parseCommand cmd = do
@@ -103,14 +108,54 @@ handleRequest irc rqid = go
       unless b $
         throwError (rqid, "Can not send IRC command, server not connected")
 
+fakeOwnFrom :: I.ServerConfig -> W.From
+fakeOwnFrom irc = W.From (W.Nick $ I.nick irc) (I.nick irc) "localhost"
+
 -- | Send an IRC message over the websocket
 sendResponse ::
      (MonadBunyan r m, MonadUnliftIO m)
-  => GuardedConnection
+  => I.ServerConfig
+  -> GuardedConnection
   -> I.Message
   -> m ()
-sendResponse gc msg = do
-  let msg' =
-        W.ResponseWithID Nothing $ W.GenericMessage (toText $ I.ircLine msg)
-  logTrace ("A message from our server: " <> toText (A.encode msg'))
+sendResponse irc gc msg = do
+  let msg' = W.ResponseWithID Nothing (classifyIrcMessage (fakeOwnFrom irc) msg)
+  logTrace ("subscription message to websocket: " <> toText (A.encode msg'))
   sendGuardedTextData gc (A.encode msg')
+
+
+-- turns a command we sent to the server into a response message
+classifyIrcCommand:: W.From -> I.Command -> W.Response
+classifyIrcCommand myFrom I.Command {cmdPrefix, cmdCmd, cmdArgs} =
+  classifyIrcMessage myFrom (I.Message cmdPrefix (I.Cmd cmdCmd) cmdArgs)
+
+-- turns irc messages into GenericMessage or ChannelMessage / PrivateMessage
+classifyIrcMessage :: W.From -> I.Message -> W.Response
+classifyIrcMessage myFrom m@I.Message {msgPrefix, msgCmd, msgArgs} =
+  fromMaybe (W.GenericMessage (toText $ I.ircLine m)) $ do
+    from <- maybe (Just myFrom) parseFrom' (toText <$> msgPrefix)
+    cmd <-
+      case msgCmd of
+        I.Cmd x@"PRIVMSG" -> Just $ toText x
+        I.Cmd x@"NOTICE" -> Just $ toText x
+        _ -> Nothing
+    channels <- validChannels
+    let msg = toText $ B.intercalate " " $ tail msgArgs
+    pure W.ChannelMessage {from, channels, cmd, msg}
+  where
+    parseFrom' :: Text -> Maybe W.From
+    parseFrom' prefix = either (const Nothing) Just (Atto.parseOnly parseFrom prefix)
+    validChannelName :: B.ByteString -> Bool
+    validChannelName bs = B.head bs `B.elem` "#&+!"
+    validChannels :: Maybe [W.Channel]
+    validChannels =
+      case W.Channel . toText <$>
+        filter validChannelName (B.split (I.c2w ',') (head msgArgs)) of
+        [] -> Nothing
+        x -> Just x
+
+parseFrom :: Atto.Parser W.From
+parseFrom =
+  W.From <$> (W.Nick <$> Atto.takeWhile1 (/= '!') <* Atto.string "!") <*>
+  (Atto.takeWhile1 (/= '@') <* Atto.string "@") <*>
+  Atto.takeWhile1 (const True)

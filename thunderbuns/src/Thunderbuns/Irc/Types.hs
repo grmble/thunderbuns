@@ -3,11 +3,11 @@ module Thunderbuns.Irc.Types where
 import Data.ByteString (ByteString)
 import UnliftIO.STM (TChan, TBQueue, TVar, TMVar)
 import Control.Concurrent (ThreadId)
-import Thunderbuns.Irc.Config (Server)
+import Thunderbuns.Irc.Config (ServerConfig)
 
 -- | IrcServer connection
 data Connection = Connection
-  { server :: !Server
+  { server :: !ServerConfig
   , fromServer :: !(TChan Message)
   , toServer :: !(TBQueue Command)
   , status :: !(TVar Status)
@@ -46,4 +46,3 @@ data Message = Message
   , msgCmd :: !Cmd
   , msgArgs :: ![ByteString]
   } deriving (Eq, Ord, Show)
-

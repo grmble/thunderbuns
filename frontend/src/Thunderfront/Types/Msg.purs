@@ -21,6 +21,7 @@ import Thunderfront.Types.WS as WS
 -- | * MessageInputMsg: Message input handling (= text input for chat messages)
 -- | * LoginFormMsg: Form handling messages for the login form
 -- | * CurrentViewMsg: Handles the state for view switching
+-- | * ActiveChannelMsg: Switches the active channel
 -- | * ResponseMsg: incoming responses from the websocket
 -- | * RequestMsg: outgoing requests to the websocket.
 -- |   The view code can not update the model, but a request id
@@ -31,6 +32,7 @@ data Msg
   | MessageInputMsg String
   | LoginFormMsg FormMsg
   | CurrentViewMsg MT.CurrentView
+  | ActiveChannelMsg (Maybe WS.Channel)
   | RequestMsg WS.Request
   | ResponseMsg WS.ResponseWithID
 
@@ -40,6 +42,7 @@ msgShow (WebSocketMsg _) = "WebSocketMsg"
 msgShow (LoginFormMsg _) = "LoginFormMsg"
 msgShow (MessageInputMsg x) = "MessageInputMsg (" <> show x <> ")"
 msgShow (CurrentViewMsg x) = "CurrentViewMsg (" <> show x <> ")"
+msgShow (ActiveChannelMsg x) = "ActiveChannelMsg (" <> show x <> ")"
 msgShow (RequestMsg x) = "RequestMsg (" <> show x <> ")"
 msgShow (ResponseMsg x) = "ResponseMsg (" <> show x <> ")"
 

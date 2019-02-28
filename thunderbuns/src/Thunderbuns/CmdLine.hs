@@ -116,7 +116,7 @@ wsApplication irccon lgX pending =
     ircSubscription chan gc lg =
       forever $ do
         msg <- atomically $ readTChan chan
-        runReaderT (sendResponse gc msg) lg
+        runReaderT (sendResponse (I.server irccon) gc msg) lg
 
 --
 -- XXX consider promoting these to bunyan

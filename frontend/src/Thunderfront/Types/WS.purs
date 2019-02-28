@@ -51,7 +51,10 @@ instance encodeResponseWithID :: Encode ResponseWithID where encode = genericEnc
 
 data Response
   = GenericMessage { msg :: String }
-  | ChannelMessage { nick :: Nick, cmd :: String, channel :: Channel, msg :: String }
+  | ChannelMessage { from :: From
+                   , cmd :: String
+                   , channels :: Array Channel
+                   , msg :: String }
   | ErrorMessage { errorMsg :: String }
 
 derive instance genericResponse :: Generic Response _
@@ -82,6 +85,17 @@ instance encodeRequestID :: Encode RequestID where
 
 _RequestID :: Iso' RequestID Int
 _RequestID = _Newtype
+
+-- | A message can be from a server or from a user
+-- |
+-- | But for our channel messages, we only want messages from users
+data From = From { nick :: Nick , user :: String , host :: String }
+
+derive instance genericFrom :: Generic From _
+derive instance eqFrom :: Eq From
+instance showFrom :: Show From where show = genericShow
+instance decodeFrom :: Decode From where decode = genericDecode interfaceOptions
+instance encodeFrom :: Encode From where encode = genericEncode interfaceOptions
 
 
 -- | A Channel represents an IRC Channel (or nick, for private messages)

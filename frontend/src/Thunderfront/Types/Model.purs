@@ -5,6 +5,7 @@ import Prelude
 
 import Bonsai.Forms (FormModel)
 import Bonsai.Forms.Model (emptyFormModel)
+import Data.CatList as L
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Lens')
@@ -43,9 +44,8 @@ newtype Model =
   , activeRequests :: S.Set WS.RequestID
 
   , activeChannel :: Maybe WS.Channel
-  , channels :: Array WS.Channel
-  , channelMessages :: M.Map WS.Channel (Array NickAndMsg)
-  , messages :: Array String
+  , channelMessages :: M.Map WS.Channel (L.CatList NickAndMsg)
+  , messages :: L.CatList String
 
   , formModels :: FormModels
   , currentView :: CurrentView
@@ -57,9 +57,8 @@ emptyModel =
         , maxRequestID: WS.RequestID 0
         , activeRequests: S.empty
         , activeChannel: Nothing
-        , channels: []
         , channelMessages: M.empty
-        , messages: []
+        , messages: L.empty
         , formModels: FormModels { inputModel: ""
                                  , loginFormModel: emptyFormModel}
         , currentView: ChannelView }
@@ -90,13 +89,10 @@ channelName = WS._Channel
 activeChannel :: Lens' Model (Maybe WS.Channel)
 activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
 
-channels :: Lens' Model (Array WS.Channel)
-channels = _Newtype <<< prop (SProxy :: SProxy "channels")
-
-channelMessages :: Lens' Model (M.Map WS.Channel (Array NickAndMsg))
+channelMessages :: Lens' Model (M.Map WS.Channel (L.CatList NickAndMsg))
 channelMessages = _Newtype <<< prop (SProxy :: SProxy "channelMessages")
 
-messages :: Lens' Model (Array String)
+messages :: Lens' Model (L.CatList String)
 messages = _Newtype <<< prop (SProxy :: SProxy "messages")
 
 activeRequests :: Lens' Model (S.Set WS.RequestID)
