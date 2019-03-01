@@ -13,6 +13,7 @@ import Control.Monad.Reader (runReaderT)
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
+import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
 import Data.String (fromString)
 import Data.Text (Text)
@@ -20,7 +21,11 @@ import qualified Data.Text as T
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
 import Network.Wai (Application, Request(..), Response, responseStatus)
-import Network.Wai.Application.Static (defaultWebAppSettings, staticApp)
+import Network.Wai.Application.Static
+  ( StaticSettings(..)
+  , defaultWebAppSettings
+  , staticApp
+  )
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
@@ -42,6 +47,7 @@ import UnliftIO.Async (Async, async, cancel)
 import UnliftIO.Exception (IOException, bracket, catchIO, finally)
 import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import UnliftIO.STM (TChan, atomically, dupTChan, readTChan)
+import WaiAppStatic.Types (toPiece)
 
 initialEnv :: IO C.Env
 initialEnv = do
@@ -85,7 +91,9 @@ mainApplication fp irccon = logResponseTime serve
       websocketsOr
         defaultConnectionOptions
         (wsApplication irccon lg)
-        (staticApp $ defaultWebAppSettings fp)
+        (staticApp settings)
+    settings =
+      (defaultWebAppSettings fp) {ssIndices = [fromJust $ toPiece "index.html"]}
 
 wsApplication :: I.Connection -> Logger -> ServerApp
 wsApplication irccon lgX pending =
