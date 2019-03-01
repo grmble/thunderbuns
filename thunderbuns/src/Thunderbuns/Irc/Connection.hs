@@ -12,18 +12,14 @@ import Conduit
   , runConduit
   , yield
   )
+
 import Control.Concurrent (myThreadId)
 import Control.Exception (SomeException)
-import Control.Monad (forever, unless)
 import qualified Data.Aeson as A
-import Data.ByteString (ByteString)
 import qualified Data.Conduit.Attoparsec as CA
 import qualified Data.Conduit.Network as CN
 import qualified Data.Conduit.Network.TLS as CT
-import Data.Foldable (for_)
-import Data.Functor (($>))
 import qualified Data.HashMap.Strict as M
-import Data.Monoid ((<>))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Void (Void)
@@ -38,6 +34,7 @@ import System.Log.Bunyan.RIO
 import Thunderbuns.Irc.Config
 import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessageOrLine)
 import Thunderbuns.Irc.Types
+import Thunderbuns.Tlude
 import UnliftIO (MonadIO(..), MonadUnliftIO(..))
 import UnliftIO.Async (Async, async, cancel, waitAnyCatchCancel)
 import UnliftIO.Exception (bracket, throwString)

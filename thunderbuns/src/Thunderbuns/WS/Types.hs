@@ -7,14 +7,12 @@
 --
 module Thunderbuns.WS.Types where
 
+import Thunderbuns.Tlude
 import qualified Data.Aeson as A
 import Data.Aeson.Types
 import Data.Hashable (Hashable)
-import Data.Monoid ((<>))
 import qualified Data.Scientific as SC
-import Data.Text (Text)
 import qualified Data.Text as T
-import GHC.Generics (Generic)
 
 -- | Request defines anything that can be received from the frontend
 --

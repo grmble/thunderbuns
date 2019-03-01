@@ -2,7 +2,6 @@
 
 module Thunderbuns.WS.Handler where
 
-import Control.Monad (forever)
 import Control.Monad.Except
 import qualified Data.Aeson as A
 import Data.Attoparsec.ByteString (endOfInput, parseOnly)
@@ -10,8 +9,6 @@ import qualified Data.Attoparsec.Text as Atto
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (fromMaybe)
-import Data.Monoid ((<>))
-import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
@@ -20,6 +17,7 @@ import qualified Thunderbuns.Irc.Config as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
+import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (MonadUnliftIO(..))
 import UnliftIO.Exception (bracket_)
@@ -123,9 +121,8 @@ sendResponse irc gc msg = do
   logTrace ("subscription message to websocket: " <> toText (A.encode msg'))
   sendGuardedTextData gc (A.encode msg')
 
-
 -- turns a command we sent to the server into a response message
-classifyIrcCommand:: W.From -> I.Command -> W.Response
+classifyIrcCommand :: W.From -> I.Command -> W.Response
 classifyIrcCommand myFrom I.Command {cmdPrefix, cmdCmd, cmdArgs} =
   classifyIrcMessage myFrom (I.Message cmdPrefix (I.Cmd cmdCmd) cmdArgs)
 
@@ -144,13 +141,14 @@ classifyIrcMessage myFrom m@I.Message {msgPrefix, msgCmd, msgArgs} =
     pure W.ChannelMessage {from, channels, cmd, msg}
   where
     parseFrom' :: Text -> Maybe W.From
-    parseFrom' prefix = either (const Nothing) Just (Atto.parseOnly parseFrom prefix)
+    parseFrom' prefix =
+      either (const Nothing) Just (Atto.parseOnly parseFrom prefix)
     validChannelName :: B.ByteString -> Bool
     validChannelName bs = B.head bs `B.elem` "#&+!"
     validChannels :: Maybe [W.Channel]
     validChannels =
       case W.Channel . toText <$>
-        filter validChannelName (B.split (I.c2w ',') (head msgArgs)) of
+           filter validChannelName (B.split (I.c2w ',') (head msgArgs)) of
         [] -> Nothing
         x -> Just x
 

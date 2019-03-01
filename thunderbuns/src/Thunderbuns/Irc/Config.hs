@@ -1,11 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
+
 module Thunderbuns.Irc.Config where
 
 import Control.Lens.TH (makeClassy)
-import Data.ByteString (ByteString)
-import Data.Text (Text)
 import qualified Data.Text.Encoding as T
-import Dhall (Generic, Interpret)
+import Dhall (Interpret)
+import Thunderbuns.Tlude
 
 -- ! Server Configuration
 data ServerConfig = ServerConfig

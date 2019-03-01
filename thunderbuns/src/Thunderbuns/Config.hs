@@ -2,10 +2,10 @@
 
 module Thunderbuns.Config where
 
+import Thunderbuns.Tlude
 import Control.Lens.TH (makeClassy)
 import qualified Data.Aeson as A
-import Data.Text (Text)
-import Dhall (Generic, Interpret)
+import Dhall (Interpret)
 import System.Log.Bunyan.RIO (HasLogger(..), Logger)
 import qualified Thunderbuns.Irc.Config as IC
 import Thunderbuns.Irc.Types

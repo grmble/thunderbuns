@@ -3,12 +3,9 @@ module Thunderbuns.Irc.Parser where
 import Control.Applicative
 import Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString as Atto
-import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
-import Data.Functor
-import Data.Monoid ((<>))
-import Data.String (fromString)
 import qualified Data.Word as W
+import Thunderbuns.Tlude
 import Thunderbuns.Irc.Types
 
 -- | Parse a message from an irc server

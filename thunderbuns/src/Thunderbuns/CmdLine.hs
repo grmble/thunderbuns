@@ -8,15 +8,11 @@
 module Thunderbuns.CmdLine where
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (forever)
 import Control.Monad.Reader (runReaderT)
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
-import Data.Monoid ((<>))
-import Data.String (fromString)
-import Data.Text (Text)
 import qualified Data.Text as T
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
@@ -35,6 +31,7 @@ import System.Log.Bunyan.LogText
 import qualified Thunderbuns.Config as C
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Types as I
+import Thunderbuns.Tlude
 import Thunderbuns.WS.Handler
   ( GuardedConnection
   , guardedConnection

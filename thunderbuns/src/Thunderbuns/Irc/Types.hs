@@ -1,9 +1,9 @@
 module Thunderbuns.Irc.Types where
 
-import Data.ByteString (ByteString)
-import UnliftIO.STM (TChan, TBQueue, TVar, TMVar)
 import Control.Concurrent (ThreadId)
 import Thunderbuns.Irc.Config (ServerConfig)
+import Thunderbuns.Tlude
+import UnliftIO.STM (TBQueue, TChan, TMVar, TVar)
 
 -- | IrcServer connection
 data Connection = Connection
