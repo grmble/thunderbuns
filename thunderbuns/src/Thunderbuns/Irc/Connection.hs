@@ -36,8 +36,8 @@ import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessageOrLine)
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import UnliftIO (MonadIO(..), MonadUnliftIO(..))
-import UnliftIO.Async (Async, async, cancel, waitAnyCatchCancel)
-import UnliftIO.Exception (bracket, throwString)
+import UnliftIO.Async (Concurrently(..))
+import UnliftIO.Exception (bracket, finally, throwString)
 import UnliftIO.STM
 
 -- | Create a new, disconnected connection
@@ -78,51 +78,45 @@ runIrcConnection conn =
         throwString "can not reserve connection - not disconnected"
       logDebug "establishing connection to irc server"
       -- XXX when running with the TLS Code, the IRC connection can not be
-      -- canceled ... ???
+      -- canceled ... even when not using tls
       -- let cfg = uncurry CT.tlsClientConfig (connectionSettings $ server conn)
       -- CT.runTLSClient (cfg {CT.tlsClientUseTLS = tls $ server conn}) $ \tcpConn ->
+      -- so we use the TLS version only when it is necessary
+      let runConnection =
+            if tls $ server conn
+              then mkTLSConn
+              else mkTcpConn
+      runConnection $ \src sink -> do
+        rgchan <- atomically $ dupTChan (fromServer conn)
+        runConcurrently $
+          (\_ _ _ -> ()) <$>
+          (Concurrently $
+           srvlog "thunderbuns.irc.fromServer" $ runConduitFromServer src) <*>
+          (Concurrently $
+           srvlog "thunderbuns.irc.toServer" $ runConduitToServer sink) <*>
+          (Concurrently $ registerConnection rgchan)
+    --
+    -- use a tcp connection
+    mkTcpConn ::
+         (ConduitT () ByteString m () -> ConduitT ByteString Void m () -> m ())
+      -> m ()
+    mkTcpConn f = do
       let cfg = uncurry CN.clientSettings (connectionSettings $ server conn)
       CN.runGeneralTCPClient cfg $ \tcpConn ->
-        bracket
-          (startBackgroundTasks tcpConn)
-          cancelBackgroundTasks
-          waitForBackgroundTasks
+        f (CN.appSource tcpConn) (CN.appSink tcpConn)
     --
-    -- start the background tasks
-    startBackgroundTasks :: CN.AppData -> m [Async ()]
-    startBackgroundTasks tcpConn = do
-      rgchan <- atomically $ dupTChan (fromServer conn)
-      a1 <-
-        async $
-        serverLogger "thunderbuns.irc.fromServer" $
-        runConduitFromServer (CN.appSource tcpConn)
-      a2 <-
-        async $
-        serverLogger "thunderbuns.irc.toServer" $
-        runConduitToServer (CN.appSink tcpConn)
-      a3 <- async $ registerConnection rgchan
-      pure [a1, a2, a3]
+    -- use a tls connection
+    mkTLSConn ::
+         (ConduitT () ByteString m () -> ConduitT ByteString Void m () -> m ())
+      -> m ()
+    mkTLSConn f = do
+      let cfg = uncurry CT.tlsClientConfig (connectionSettings $ server conn)
+      CT.runTLSClient cfg $ \tcpConn ->
+        f (CN.appSource tcpConn) (CN.appSink tcpConn)
     --
     -- child loggers for various servers
-    serverLogger :: T.Text -> m a -> m a
-    serverLogger n =
-      localLogger n (M.insert "server" (A.String $ host $ server conn))
-    -- wait for a shutdown because of socket closes
-    -- first wait for end of registration task
-    -- end of any ot the others means we go down
-    waitForBackgroundTasks :: [Async ()] -> m ()
-    waitForBackgroundTasks as =
-      waitAnyCatchCancel as >>= \case
-        (_, Right ()) -> pure ()
-        (_, Left ex) ->
-          logRecord
-            ERROR
-            (exceptionContext ex)
-            ("Exception caught from background task: " <> show ex)
-    cancelBackgroundTasks :: [Async ()] -> m ()
-    cancelBackgroundTasks as = do
-      logDebug "Canceling all background tasks"
-      for_ as cancel
+    srvlog :: T.Text -> m a -> m a
+    srvlog n = localLogger n (M.insert "server" (A.String $ host $ server conn))
     -- register the connection
     registerConnection :: TChan Message -> m ()
     registerConnection chan = do
@@ -134,20 +128,26 @@ runIrcConnection conn =
       -- XXX: read result, 001 is good, 433 means nick has to be sent again
       atomically $ writeTVar (status conn) Connected
       pongPing n chan to
+    --
+    -- reply to pings
     pongPing :: ByteString -> TChan Message -> TBQueue Command -> m ()
-    pongPing nick chan to = do
-      msg <- atomically $ readTChan chan
-      case msgCmd msg of
-        Cmd "PING" ->
-          atomically $ writeTBQueue to (Command Nothing "PONG" [nick])
-        _ -> pure ()
-      pongPing nick chan to
+    pongPing nick chan to =
+      finally -- infix syntax looks horrible after hindent
+        (forever $ do
+           msg <- atomically $ readTChan chan
+           case msgCmd msg of
+             Cmd "PING" ->
+               atomically $ writeTBQueue to (Command Nothing "PONG" [nick])
+             _ -> pure ())
+        (logDebug "IRC Pongping thread terminated.")
     -- read from the server and broadcast the parsed messages
     runConduitFromServer :: ConduitT () ByteString m () -> m ()
     runConduitFromServer src =
-      runConduit $
-      src .| CA.conduitParser parseMessageOrLine .| mapC snd .| filterErrorLines .|
-      sinkTChan (fromServer conn)
+      runConduit
+        (src .| CA.conduitParser parseMessageOrLine .| mapC snd .|
+         filterErrorLines .|
+         sinkTChan (fromServer conn)) `finally`
+      logDebug "Thread reading from IRC server terminated."
     -- filter out and log error lines
     filterErrorLines =
       forever $
@@ -163,7 +163,8 @@ runIrcConnection conn =
     -- from the command queue and send to server
     runConduitToServer :: ConduitT ByteString Void m () -> m ()
     runConduitToServer sink =
-      runConduit $ sourceTBQueue (toServer conn) .| mapC ircCmdLine .| sink
+      runConduit (sourceTBQueue (toServer conn) .| mapC ircCmdLine .| sink) `finally`
+      logDebug "Thread writing to IRC server terminated."
     --
     -- release the connection
     releaseConnection :: Bool -> m ()
