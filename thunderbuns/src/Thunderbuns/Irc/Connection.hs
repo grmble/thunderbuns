@@ -77,8 +77,12 @@ runIrcConnection conn =
       unless isReserved $
         throwString "can not reserve connection - not disconnected"
       logDebug "establishing connection to irc server"
-      let cfg = uncurry CT.tlsClientConfig (connectionSettings $ server conn)
-      CT.runTLSClient (cfg {CT.tlsClientUseTLS = tls $ server conn}) $ \tcpConn ->
+      -- XXX when running with the TLS Code, the IRC connection can not be
+      -- canceled ... ???
+      -- let cfg = uncurry CT.tlsClientConfig (connectionSettings $ server conn)
+      -- CT.runTLSClient (cfg {CT.tlsClientUseTLS = tls $ server conn}) $ \tcpConn ->
+      let cfg = uncurry CN.clientSettings (connectionSettings $ server conn)
+      CN.runGeneralTCPClient cfg $ \tcpConn ->
         bracket
           (startBackgroundTasks tcpConn)
           cancelBackgroundTasks
