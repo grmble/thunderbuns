@@ -1,10 +1,9 @@
-# lts-11.13 (ghc 8.2.2) has dhall 1.11.1
-# nightly-2018-6-12 (ghc 8.4.3) has dhall 1.14, but big upgrade
-# nightly-2018-06-21 has purescript-bridge 0.13
+# 8.6.3 ghci hangs all the time on windows, wait for 8.6.4
+# resolver: lts-13.9
+# stay with 8.2.2 for now
 resolver: lts-11.22
 
 packages:
-- d64
 - thunderbuns
 
 extra-deps:
@@ -16,3 +15,8 @@ extra-deps:
   - bunyan-pid
   - bunyan-rio
   - picolens
+- git: https://github.com/grmble/hs-d64.git
+  commit: 675ee3ff16fabcf8ab3c7a05a823f4bfa180a1c5
+  subdirs:
+  - d64
+  - d64-uuid

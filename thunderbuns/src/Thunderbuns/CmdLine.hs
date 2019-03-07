@@ -123,47 +123,6 @@ wsApplication irccon lgX pending =
         msg <- atomically $ readTChan chan
         runReaderT (sendResponse (I.server irccon) gc msg) lg
 
---
--- XXX consider promoting these to bunyan
---
-textToPriority :: Text -> Priority
-textToPriority "FATAL" = FATAL
-textToPriority "ERROR" = ERROR
-textToPriority "WARN" = WARN
-textToPriority "INFO" = INFO
-textToPriority "DEBUG" = DEBUG
-textToPriority "TRACE" = TRACE
-textToPriority _ = INFO
-
--- | Run the action while running a log writing thread in the background
---
--- The log writer will write the entries from the mvar to the file.
--- A filepath of "-" is used for stderr.
---
--- If an error occurs writing to the file, it will try to use stderr
-withLogWriter :: MVar A.Object -> FilePath -> IO a -> IO a
-withLogWriter q fp action = bracket (async $ logTo fp) cancel (const action)
-  where
-    handleError :: IOException -> IO ()
-    handleError e = do
-      hPutStrLn stderr ("Exception: " <> show e)
-      go stderr
-    logTo :: FilePath -> IO ()
-    logTo "-" = go stderr
-    logTo _ =
-      do hPutStr
-           stderr
-           ("NOTE: log messages are being written to " <> fp <> "\n")
-         withFile fp AppendMode $ \handle -> do
-           hSetBuffering handle LineBuffering
-           go handle
-     `catchIO` handleError
-    go :: Handle -> IO ()
-    go handle = do
-      x <- takeMVar q
-      LB.hPut handle (A.encode x <> "\n")
-      go handle
-
 localLogger ::
      MonadUnliftIO m
   => Text
