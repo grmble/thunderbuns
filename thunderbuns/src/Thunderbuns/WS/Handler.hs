@@ -12,7 +12,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text.Encoding as T
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
-import System.Log.Bunyan.RIO (MonadBunyan, logDebug, logTrace)
+import System.Log.Bunyan.RIO (Bunyan, logDebug, logTrace)
 import qualified Thunderbuns.Irc.Config as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Parser as I
@@ -45,7 +45,7 @@ sendGuardedPing GuardedConnection {conn, mvar} bs =
 type EIO = ExceptT (Maybe W.RequestID, Text)
 
 handleConn ::
-     forall r m. (MonadBunyan r m, MonadUnliftIO m)
+     forall r m. (Bunyan r m, MonadUnliftIO m)
   => I.Connection
   -> GuardedConnection
   -> m ()
@@ -111,7 +111,7 @@ fakeOwnFrom irc = W.From (W.Nick $ I.nick irc) (I.nick irc) "localhost"
 
 -- | Send an IRC message over the websocket
 sendResponse ::
-     (MonadBunyan r m, MonadUnliftIO m)
+     (Bunyan r m, MonadUnliftIO m)
   => I.ServerConfig
   -> GuardedConnection
   -> I.Message

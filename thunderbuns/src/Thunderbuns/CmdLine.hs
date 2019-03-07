@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
+import Data.Time.Clock.System (getSystemTime)
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
 import Network.Wai (Application, Request(..), Response, responseStatus)
@@ -28,6 +29,7 @@ import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
 import System.IO
 import System.Log.Bunyan
 import System.Log.Bunyan.LogText
+import System.Log.Bunyan.Types (textToPriority)
 import qualified Thunderbuns.Config as C
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Types as I
@@ -73,7 +75,7 @@ logAndCancel msg lg a = do
 runWebServer ::
      MonadUnliftIO m => C.HttpConfig -> I.Connection -> Logger -> m ()
 runWebServer C.HttpConfig {C.port, C.staticDir} irccon =
-  localLogger "thunderbuns.http" id $ \lg -> do
+  withNamedLogger "thunderbuns.http" id $ \lg -> do
     let p = fromIntegral port :: Int
     let dir = T.unpack staticDir :: FilePath
     logInfo (T.pack $ "Serving HTTP on port " <> show p) lg
@@ -94,7 +96,7 @@ mainApplication fp irccon = logResponseTime serve
 
 wsApplication :: I.Connection -> Logger -> ServerApp
 wsApplication irccon lgX pending =
-  flip (localLogger "thunderbuns.ws" id) lgX $ \lg -> do
+  flip (withNamedLogger "thunderbuns.ws" id) lgX $ \lg -> do
     gc <- acceptRequest pending >>= guardedConnection
     logInfo "Connection accepted, starting ping/irc subscription threads" lg
     bracket
@@ -123,30 +125,47 @@ wsApplication irccon lgX pending =
         msg <- atomically $ readTChan chan
         runReaderT (sendResponse (I.server irccon) gc msg) lg
 
-localLogger ::
-     MonadUnliftIO m
-  => Text
-  -> (A.Object -> A.Object)
-  -> (Logger -> m a)
-  -> Logger
-  -> m a
-localLogger n ctxfn action lg = do
-  lg' <- childLogger' n ctxfn lg
-  action lg'
-
 -- XXX fix in bunyan (improve logDuration with a final modification of the context)
 logResponseTime :: (Logger -> Application) -> Logger -> Application
 logResponseTime app lg req respond = do
-  start <- getLoggingTime
-  lg' <- childLogger' "thunderbuns.http" (requestLoggingContext req) lg
+  start <- getSystemTime
+  lg' <- namedLogger "thunderbuns.http" (requestLoggingContext req) lg
   app lg' req $ \res -> do
     responded <- respond res
-    end <- getLoggingTime
+    end <- getSystemTime
     let (fobj, msg) = duration start end
     let fobj' = responseLoggingContext res
     logRecord INFO (fobj' . fobj) msg lg'
     pure responded
 
+{--
+logResponseTime' :: (Logger -> Application) -> Logger -> Application
+logResponseTime' app lg req respond =
+  withNamedLogger
+    "thunderbuns.http"
+    (requestLoggingContext req)
+    (thenLogDuration' callApp)
+    lg
+  where
+    callApp lg =
+      app lg req $ \res -> do
+        responded <- respond res
+        pure (responseLoggingContext res M.empty, responded)
+
+thenLogDuration' :: MonadIO m => (Logger -> m (A.Object, a)) -> Logger -> m a
+thenLogDuration' action lg = do
+  start <- liftIO getSystemTime
+  (ctx, a) <- action lg
+  end <- liftIO getSystemTime
+  uncurry (logRecord INFO) (duration start end) (modifyContext (M.union ctx) lg)
+  pure a
+--}
+
+--
+--
+-- System.Log.Bunyan.Wai
+--
+--
 requestLoggingContext :: Request -> A.Object -> A.Object
 requestLoggingContext req =
   M.insert

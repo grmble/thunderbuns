@@ -8,7 +8,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/grmble/hs-bunyan.git
-  commit: 0da5738ee18981444c75119fc49effca87e04645
+  commit: 675ee3ff16fabcf8ab3c7a05a823f4bfa180a1c5
   subdirs:
   - bunyan
   - bunyan-freer
@@ -16,7 +16,7 @@ extra-deps:
   - bunyan-rio
   - picolens
 - git: https://github.com/grmble/hs-d64.git
-  commit: 675ee3ff16fabcf8ab3c7a05a823f4bfa180a1c5
+  commit: e9105efcd929418dfd415c2a5ddd367616e3fe75
   subdirs:
   - d64
   - d64-uuid

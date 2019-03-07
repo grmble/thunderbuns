@@ -25,11 +25,11 @@ import qualified Data.Text.Encoding as T
 import Data.Void (Void)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
-  ( MonadBunyan
+  ( Bunyan
   , Priority(..)
-  , localLogger
   , logDebug
   , logRecord
+  , withNamedLogger
   )
 import Thunderbuns.Irc.Config
 import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessageOrLine)
@@ -50,11 +50,11 @@ newConnection server = do
   pure Connection {..}
 
 runIrcConnection ::
-     forall r m. (MonadThrow m, MonadUnliftIO m, MonadBunyan r m)
+     forall r m. (Bunyan r m, MonadThrow m, MonadUnliftIO m)
   => Connection
   -> m ()
 runIrcConnection conn =
-  localLogger "thunderbuns.irc" id $
+  withNamedLogger "thunderbuns.irc" id $
   bracket reserveConnection releaseConnection handleConnection
     --
     -- reserve the connection and start the handling threads
@@ -116,7 +116,7 @@ runIrcConnection conn =
     --
     -- child loggers for various servers
     srvlog :: T.Text -> m a -> m a
-    srvlog n = localLogger n (M.insert "server" (A.String $ host $ server conn))
+    srvlog n = withNamedLogger  n (M.insert "server" (A.String $ host $ server conn))
     -- register the connection
     registerConnection :: TChan Message -> m ()
     registerConnection chan = do
@@ -175,25 +175,25 @@ runIrcConnection conn =
 
 -- | Use a TBQueue as a conduit source.
 sourceTBQueue ::
-     (MonadUnliftIO m, MonadBunyan r m)
+     (MonadUnliftIO m, Bunyan r m)
   => TBQueue Command
   -> ConduitT () Command m ()
 sourceTBQueue q = do
   a <- atomically $ readTBQueue q
-  lift $ logRecord DEBUG id (ircCmdLine a)
+  lift $ logRecord DEBUG id (toText $ ircCmdLine a)
   yield a
   sourceTBQueue q
 
 -- | Use a TChan as a conduit sink.
 sinkTChan ::
-     (MonadUnliftIO m, MonadBunyan r m)
+     (MonadUnliftIO m, Bunyan r m)
   => TChan Message
   -> ConduitT Message Void m ()
 sinkTChan chan =
   await >>= \case
     Nothing -> pure ()
     Just msg -> do
-      lift $ logRecord DEBUG id (ircLine msg)
+      lift $ logRecord DEBUG id (toText $ ircLine msg)
       atomically $ writeTChan chan msg
       sinkTChan chan
 
