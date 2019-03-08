@@ -8,7 +8,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/grmble/hs-bunyan.git
-  commit: 675ee3ff16fabcf8ab3c7a05a823f4bfa180a1c5
+  commit: 4f3bb35ed53f39d94d13614d0b6c090e5ff6cb76 
   subdirs:
   - bunyan
   - bunyan-freer

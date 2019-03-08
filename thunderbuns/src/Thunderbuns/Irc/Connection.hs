@@ -14,8 +14,8 @@ import Conduit
   )
 
 import Control.Concurrent (myThreadId)
-import Control.Exception (SomeException)
 import qualified Data.Aeson as A
+import qualified Data.ByteString as B
 import qualified Data.Conduit.Attoparsec as CA
 import qualified Data.Conduit.Network as CN
 import qualified Data.Conduit.Network.TLS as CT
@@ -23,6 +23,7 @@ import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Void (Void)
+import System.Log.Bunyan.Context (someException)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
   ( Bunyan
@@ -116,13 +117,17 @@ runIrcConnection conn =
     --
     -- child loggers for various servers
     srvlog :: T.Text -> m a -> m a
-    srvlog n = withNamedLogger  n (M.insert "server" (A.String $ host $ server conn))
+    srvlog n =
+      withNamedLogger n (M.insert "server" (A.String $ host $ server conn))
     -- register the connection
     registerConnection :: TChan Message -> m ()
     registerConnection chan = do
       let to = toServer conn
       let n = T.encodeUtf8 $ nick $ server conn
       let fn = T.encodeUtf8 $ fullname $ server conn
+      let p = T.encodeUtf8 $ serverPassword $ server conn
+      unless (B.null p) $
+        atomically $ writeTBQueue to (Command Nothing "PASS" [p])
       atomically $ writeTBQueue to (Command Nothing "NICK" [n])
       atomically $ writeTBQueue to (Command Nothing "USER" [n, "0", "*", fn])
       -- XXX: read result, 001 is good, 433 means nick has to be sent again
@@ -206,8 +211,3 @@ sendCommand conn cmd =
   atomically (readTVar (status conn)) >>= \case
     Connected -> atomically (writeTBQueue (toServer conn) cmd) $> True
     _ -> pure False
-
---- XXX promote
-exceptionContext :: SomeException -> A.Object -> A.Object
-exceptionContext ex =
-  M.insert "err" (A.Object $ M.singleton "msg" (A.String (T.pack $ show ex)))

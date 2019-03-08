@@ -14,10 +14,16 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Data.Time.Clock.System (getSystemTime)
+import Data.Time.Clock.System (SystemTime, getSystemTime)
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
-import Network.Wai (Application, Request(..), Response, responseStatus)
+import Network.Wai
+  ( Application
+  , Request(..)
+  , Response
+  , ResponseReceived
+  , responseStatus
+  )
 import Network.Wai.Application.Static
   ( StaticSettings(..)
   , defaultWebAppSettings
@@ -125,47 +131,26 @@ wsApplication irccon lgX pending =
         msg <- atomically $ readTChan chan
         runReaderT (sendResponse (I.server irccon) gc msg) lg
 
--- XXX fix in bunyan (improve logDuration with a final modification of the context)
-logResponseTime :: (Logger -> Application) -> Logger -> Application
-logResponseTime app lg req respond = do
-  start <- getSystemTime
-  lg' <- namedLogger "thunderbuns.http" (requestLoggingContext req) lg
-  app lg' req $ \res -> do
-    responded <- respond res
-    end <- getSystemTime
-    let (fobj, msg) = duration start end
-    let fobj' = responseLoggingContext res
-    logRecord INFO (fobj' . fobj) msg lg'
-    pure responded
-
-{--
-logResponseTime' :: (Logger -> Application) -> Logger -> Application
-logResponseTime' app lg req respond =
-  withNamedLogger
-    "thunderbuns.http"
-    (requestLoggingContext req)
-    (thenLogDuration' callApp)
-    lg
-  where
-    callApp lg =
-      app lg req $ \res -> do
-        responded <- respond res
-        pure (responseLoggingContext res M.empty, responded)
-
-thenLogDuration' :: MonadIO m => (Logger -> m (A.Object, a)) -> Logger -> m a
-thenLogDuration' action lg = do
-  start <- liftIO getSystemTime
-  (ctx, a) <- action lg
-  end <- liftIO getSystemTime
-  uncurry (logRecord INFO) (duration start end) (modifyContext (M.union ctx) lg)
-  pure a
---}
-
 --
 --
 -- System.Log.Bunyan.Wai
 --
 --
+logResponseTime :: (Logger -> Application) -> Logger -> Application
+logResponseTime = go
+  where
+    go :: (Logger -> Application) -> Logger -> Application
+    go app lg req respond =
+      withNamedLogger
+        "thunderbuns.http"
+        (requestLoggingContext req)
+        (logDuration' $ \cb lg' ->
+           app lg' req $ \res -> do
+             responded <- respond res
+             cb (responseLoggingContext res M.empty)
+             pure responded)
+        lg
+
 requestLoggingContext :: Request -> A.Object -> A.Object
 requestLoggingContext req =
   M.insert
