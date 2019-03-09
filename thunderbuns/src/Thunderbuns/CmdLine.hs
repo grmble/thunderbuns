@@ -10,18 +10,15 @@ module Thunderbuns.CmdLine where
 import Control.Concurrent (threadDelay)
 import Control.Monad.Reader (runReaderT)
 import qualified Data.Aeson as A
-import qualified Data.ByteString.Lazy as LB
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
-import Data.Time.Clock.System (SystemTime, getSystemTime)
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
 import Network.Wai
   ( Application
   , Request(..)
   , Response
-  , ResponseReceived
   , responseStatus
   )
 import Network.Wai.Application.Static
@@ -32,11 +29,11 @@ import Network.Wai.Application.Static
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
-import System.IO
 import System.Log.Bunyan
 import System.Log.Bunyan.LogText
 import System.Log.Bunyan.Types (textToPriority)
 import qualified Thunderbuns.Config as C
+import qualified Thunderbuns.Irc.Client as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Types as I
 import Thunderbuns.Tlude
@@ -49,8 +46,8 @@ import Thunderbuns.WS.Handler
   )
 import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
 import UnliftIO.Async (Async, async, cancel)
-import UnliftIO.Exception (IOException, bracket, catchIO, finally)
-import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
+import UnliftIO.Exception (bracket, finally)
+import UnliftIO.MVar (newEmptyMVar, putMVar)
 import UnliftIO.STM (TChan, atomically, dupTChan, readTChan)
 import WaiAppStatic.Types (toPiece)
 
@@ -67,9 +64,10 @@ runMain :: IO ()
 runMain = do
   env <- initialEnv
   let C.Env {C.envConfig, C.envLogQueue, C.envIrcConnection, C._envLogger} = env
+  let conn = envIrcConnection
   withLogWriter envLogQueue (C.filename $ C.logging envConfig) $
     bracket
-      (async $ runReaderT (I.runIrcConnection envIrcConnection) env)
+      (async $ runReaderT (I.runIrcClient (I.registerConnection conn) conn) env)
       (logAndCancel "Canceling IRC Connection" _envLogger)
       (const $ runWebServer (C.http envConfig) envIrcConnection _envLogger)
 

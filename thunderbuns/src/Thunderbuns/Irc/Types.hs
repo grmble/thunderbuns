@@ -1,9 +1,10 @@
 module Thunderbuns.Irc.Types where
 
-import Control.Concurrent (ThreadId)
+import Control.Concurrent (ThreadId, myThreadId)
 import Thunderbuns.Irc.Config (ServerConfig)
 import Thunderbuns.Tlude
-import UnliftIO.STM (TBQueue, TChan, TMVar, TVar)
+import UnliftIO (MonadUnliftIO, liftIO)
+import UnliftIO.STM
 
 -- | IrcServer connection
 data Connection = Connection
@@ -13,6 +14,29 @@ data Connection = Connection
   , status :: !(TVar Status)
   , handler :: !(TMVar ThreadId)
   }
+
+-- | Reserve the connection
+--
+-- Until it goes into status Connected, writing to the connection
+-- gives an error.  Also stores a thread id for killing.
+reserveConnection :: MonadUnliftIO m => Connection -> m Bool
+reserveConnection conn = do
+  tid <- liftIO myThreadId
+  atomically $ do
+    st <- readTVar (status conn)
+    case st of
+      Disconnected -> do
+        writeTVar (status conn) Registration
+        putTMVar (handler conn) tid
+        pure True
+      _ -> pure False
+
+-- | Release the connection
+releaseConnection :: MonadUnliftIO m => Connection -> Bool -> m ()
+releaseConnection conn _ =
+  atomically $ do
+    _ <- takeTMVar (handler conn)
+    writeTVar (status conn) Disconnected
 
 -- | IrcServer Connection status
 data Status

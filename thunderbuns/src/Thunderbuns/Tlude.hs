@@ -4,6 +4,7 @@ module Thunderbuns.Tlude
   , LText
   ) where
 
+import Control.Category as X ((<<<), (>>>))
 import Control.Monad as X (forever, unless, when)
 import Data.ByteString as X (ByteString)
 import qualified Data.ByteString.Lazy as LB

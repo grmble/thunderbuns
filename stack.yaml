@@ -1,6 +1,8 @@
+# 8.2.2 is lts-11.22
 # 8.6.3 ghci hangs all the time on windows, wait for 8.6.4
 # resolver: lts-13.9
-# stay with 8.2.2 for now
+# 8.6.4 is in nightly-2019-03-08
+# resolver: nightly-2019-03-08
 resolver: lts-11.22
 
 packages:
@@ -8,7 +10,7 @@ packages:
 
 extra-deps:
 - git: https://github.com/grmble/hs-bunyan.git
-  commit: 4f3bb35ed53f39d94d13614d0b6c090e5ff6cb76 
+  commit: 49a8342905fd14746a2e140b3bc9f78462399cea
   subdirs:
   - bunyan
   - bunyan-freer
