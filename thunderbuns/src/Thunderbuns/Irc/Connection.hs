@@ -6,10 +6,11 @@ import qualified Data.ByteString as B
 import qualified Data.Text.Encoding as T
 import System.Log.Bunyan.RIO (Bunyan, logDebug)
 import Thunderbuns.Irc.Config
+import Thunderbuns.Irc.Parser (ircLine)
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import UnliftIO (MonadIO(..), MonadUnliftIO(..))
-import UnliftIO.Exception (finally)
+import UnliftIO.Exception (finally, throwString)
 import UnliftIO.STM
 
 -- | Create a new, disconnected connection
@@ -37,7 +38,15 @@ registerConnection conn msgChan cmdQueue = do
     atomically $ writeTBQueue cmdQueue (Command Nothing "PASS" [p])
   atomically $ writeTBQueue cmdQueue (Command Nothing "NICK" [n])
   atomically $ writeTBQueue cmdQueue (Command Nothing "USER" [n, "0", "*", fn])
-      -- XXX: read result, 001 is good, 433 means nick has to be sent again
+  msg <- atomically $ readTChan msgChan
+  case msgCmd msg of
+    Response RplWelcome ->
+      atomically $
+      for_ (channels $ server conn) $ \cn ->
+        writeTBQueue cmdQueue (Command Nothing "JOIN" [T.encodeUtf8 cn])
+    _ ->
+      throwString
+        ("Unexpected message, waiting for 001, got: " <> show (ircLine msg))
   atomically $ writeTVar (status conn) Connected
   pongPing n msgChan cmdQueue
 

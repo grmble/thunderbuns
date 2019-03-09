@@ -16,6 +16,7 @@ data ServerConfig = ServerConfig
   , nick :: !Text
   , fullname :: !Text
   , nicksrvPassword :: !Text
+  , channels :: ![Text]
   } deriving (Generic, Eq, Show)
 
 $(makeClassy ''ServerConfig)

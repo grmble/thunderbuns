@@ -9,4 +9,5 @@
 , nick: Text
 , fullname: Text
 , nicksrvPassword: Text
+, channels: List Text
 }
