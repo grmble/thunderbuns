@@ -11,18 +11,26 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC8
 import Data.Default (def)
 import qualified Data.HashMap.Strict as M
+import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import qualified Network.Connection as C
+import System.Log.Bunyan.Context (someException)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
 import qualified Thunderbuns.Irc.Config as IC
-import Thunderbuns.Irc.Parser (ircCmdLine, parseMessage)
+import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
 import UnliftIO.Async (Concurrently(..), concurrently, runConcurrently)
-import UnliftIO.Exception (bracket, finally, throwString)
+import UnliftIO.Concurrent (threadDelay)
+import UnliftIO.Exception (SomeException, bracket, catch, finally, throwString)
 import UnliftIO.STM
+import UnliftIO.Timeout (timeout)
+
+-- default timeout for network operations in microseconds
+clientTimeout :: Int
+clientTimeout = 60 * 1000 * 1000
 
 -- | Connect to the host and port, optinally using tls
 connect :: MonadIO m => String -> Integer -> Bool -> m C.Connection
@@ -44,20 +52,35 @@ runIrcClient ::
   -> Connection
   -> m ()
 runIrcClient registrator conn =
-  withNamedLogger "thunderbuns.irc" id $
-  bracket (reserveConnection conn) (releaseConnection conn) handleConnection
+  withNamedLogger
+    "thunderbuns.irc"
+    id
+    (bracket (reserveConnection conn) (releaseConnection conn) handleConnection) `catch`
+  waitAndReconnect
     --
     -- reserve the connection and start the handling threads
     --
     -- handle the connection
+    -- reconnect after a delay
+    -- note: CTRL-C is UserInterrupt is asynchronous - unliftIO catch will not catch it
   where
+    waitAndReconnect :: SomeException -> m ()
+    waitAndReconnect e = do
+      logRecord ERROR (someException e) "waitAndReconnect: handling exception"
+      threadDelay clientTimeout
+      logInfo "waitAndReconnect: attempting to reconnect ..."
+      runIrcClient registrator conn
+    --
+    -- connection is reserved, handle it
     handleConnection :: Bool -> m ()
     handleConnection isReserved = do
       unless isReserved $
         throwString "can not reserve connection - not disconnected"
       logDebug "establishing connection to irc server"
       let IC.ServerConfig {IC.host, IC.port, IC.tls} = server conn
-      bracket (connect (T.unpack host) port tls) (liftIO . C.connectionClose) $ \client -> do
+      bracket
+        (connectWithTimeout (T.unpack host) port tls)
+        (liftIO . C.connectionClose) $ \client -> do
         rgchan <- atomically $ dupTChan (fromServer conn)
         runConcurrently $
           (\_ _ _ -> ()) <$>
@@ -67,6 +90,11 @@ runIrcClient registrator conn =
           (Concurrently $
            srvlog "thunderbuns.irc.registrator" $
            registrator rgchan (toServer conn))
+    -- connect within timeout or exception
+    connectWithTimeout host port tls =
+      fromJust <$> timeout clientTimeout (connect host port tls)
+    getLineTimeout client =
+      fromJust <$> timeout clientTimeout (C.connectionGetLine 512 client)
     --
     -- child loggers for various server threads
     srvlog :: Text -> m a -> m a
@@ -77,7 +105,7 @@ runIrcClient registrator conn =
     runFromServer :: C.Connection -> m ()
     runFromServer client =
       forever
-        (do line <- liftIO $ chomp <$> C.connectionGetLine 512 client
+        (do line <- liftIO $ chomp <$> getLineTimeout client
             let parsed =
                   Atto.parseOnly
                     (parseMessage <* Atto.endOfInput)
@@ -88,13 +116,16 @@ runIrcClient registrator conn =
                   WARN
                   (M.insert "line" (A.String $ toText line))
                   ("Can not parse line: " <> toText s)
-              Right msg -> atomically $ writeTChan (fromServer conn) msg) `finally`
+              Right msg -> do
+                logDebug (toText $ ircLine msg)
+                atomically $ writeTChan (fromServer conn) msg) `finally`
       logDebug "Thread reading from IRC server terminated."
     -- from the command queue and send to server
     runToServer :: C.Connection -> m ()
     runToServer client =
       forever
         (do cmd <- atomically $ readTBQueue (toServer conn)
+            logDebug (toText $ ircCmdLine cmd)
             liftIO $ C.connectionPut client (ircCmdLine cmd)) `finally`
       logDebug "Thread writing to IRC server terminated."
 
