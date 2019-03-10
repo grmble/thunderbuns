@@ -43,8 +43,9 @@ data Response
   = Done { rqid :: RequestID }
   | GenericError { rqid :: RequestID, errorMsg :: String }
   | DecodeError { errorMsg :: String }
-  | GenericMessage { msg :: String }
-  | ChannelMessage { from :: From
+  | GenericMessage { uuid :: String, msg :: String }
+  | ChannelMessage { uuid :: String
+                   , from :: From
                    , cmd :: String
                    , channels :: Array Channel
                    , msg :: String }

@@ -39,12 +39,15 @@ dependencies:
 - http-types
 # - jose-jwt
 - lens  # it's pulled in by dhall (i think), we might as well use it
+- monad-logger # for runNoLoggingT
 - mtl
 - network-conduit-tls
 - optparse-applicative
 - persistent
 - persistent-sqlite
 - persistent-template
+- resourcet
+- resource-pool
 - scientific
 - text
 - time

@@ -7,9 +7,11 @@ import qualified Data.Aeson as A
 import Data.Attoparsec.ByteString (endOfInput, parseOnly)
 import qualified Data.Attoparsec.Text as Atto
 import qualified Data.ByteString as B
+import Data.ByteString.D64.UUID (OrderedUUID, orderedUUID)
 import qualified Data.ByteString.Lazy as L
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromJust, fromMaybe)
 import qualified Data.Text.Encoding as T
+import Data.UUID.V1 (nextUUID)
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO (Bunyan, logDebug, logTrace)
@@ -69,9 +71,10 @@ handleConn irc gc@GuardedConnection {conn} =
       ExceptT (pure $ A.eitherDecode bs)
     -- helper for sending error responses
     errorResponse :: (Maybe W.RequestID, Text) -> W.Response
-    errorResponse (rqid, msg) = case rqid of
-      Nothing -> W.DecodeError msg
-      Just rqid' -> W.GenericError rqid' msg
+    errorResponse (rqid, msg) =
+      case rqid of
+        Nothing -> W.DecodeError msg
+        Just rqid' -> W.GenericError rqid' msg
 
 -- | Map a string error into the error type
 stringError :: Maybe W.RequestID -> Text -> String -> (Maybe W.RequestID, Text)
@@ -116,10 +119,22 @@ sendResponse _ gc response = do
   logTrace ("subscription message to websocket: " <> toText (A.encode response))
   sendGuardedTextData gc (A.encode response)
 
--- turns irc messages into GenericMessage or ChannelMessage / PrivateMessage
-classifyIrcMessage :: I.Message -> W.Response
-classifyIrcMessage m@I.Message {msgPrefix, msgCmd, msgArgs} =
-  fromMaybe (W.GenericMessage (toText $ I.ircLine m)) $ do
+makeResponse :: MonadIO m => I.Message -> m W.Response
+makeResponse msg = do
+  uuid <- orderedUUID . fromJust <$> liftIO nextUUID
+  pure $ responseFromMessage uuid msg
+
+{--
+   Because of IRC's Scandinavian origin, the characters {}|^ are
+   considered to be the lower case equivalents of the characters []\~,
+   respectively. This is a critical issue when determining the
+   equivalence of two nicknames or channel names.
+
+   XXX: normalize channel names by lowercasing like above
+--}
+responseFromMessage :: OrderedUUID -> I.Message -> W.Response
+responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
+  fromMaybe (W.GenericMessage uuid (toText $ I.ircLine m)) $ do
     from <- parseFrom' (toText msgPrefix)
     cmd <-
       case msgCmd of
@@ -128,7 +143,7 @@ classifyIrcMessage m@I.Message {msgPrefix, msgCmd, msgArgs} =
         _ -> Nothing
     channels <- validChannels
     let msg = toText $ B.intercalate " " $ tail msgArgs
-    pure W.ChannelMessage {from, channels, cmd, msg}
+    pure W.ChannelMessage {uuid, from, channels, cmd, msg}
   where
     parseFrom' :: Text -> Maybe W.From
     parseFrom' prefix =

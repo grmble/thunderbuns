@@ -2,4 +2,5 @@
 { server: ./IrcServer.dhall
 , logging: ./Log.dhall
 , http: ./HTTP.dhall
+, database: ./DB.dhall
 }

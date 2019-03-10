@@ -5,6 +5,7 @@ import Database.Persist.Sqlite
 import Data.ByteString.D64.UUID
 import qualified Data.Text.Encoding as T
 
+-- persistent insists that the instances be defined in a different file
 
 instance PersistFieldSql OrderedUUID where
   sqlType = const SqlString

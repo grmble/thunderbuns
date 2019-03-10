@@ -1,3 +1,5 @@
+*.cabal
+*.log
 *.o
 *.sqlite3
 *.sqlite3-shm
@@ -10,7 +12,6 @@
 .stack-work/
 .stack-work/
 /config.dhall
+/thunderbuns.sqlite
 TAGS
 x.*
-*.cabal
-*.log

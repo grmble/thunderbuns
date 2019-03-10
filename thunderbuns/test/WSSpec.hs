@@ -2,6 +2,8 @@
 
 module WSSpec where
 
+import Data.ByteString.D64.UUID
+import System.Log.Bunyan.LogText
 import Test.Hspec hiding (example)
 import Thunderbuns.Irc.Types
 import Thunderbuns.WS.Handler
@@ -52,9 +54,12 @@ spec = do
       let ChannelMessage {from} = classify example
        in from `shouldBe`
           From {nick = Nick "nick", user = "username", host = "the.hostname"}
+    it "from is correctly stringified" $
+      let ChannelMessage {from} = classify example
+       in fromToText from `shouldBe` toText (msgPrefix example)
 
 classify :: Message -> Response
-classify = classifyIrcMessage
+classify = responseFromMessage (OrderedUUID "fakeit")
 
 example :: Message
 example =

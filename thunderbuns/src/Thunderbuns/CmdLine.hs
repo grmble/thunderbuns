@@ -8,11 +8,14 @@
 module Thunderbuns.CmdLine where
 
 import Control.Concurrent (threadDelay)
-import Control.Monad.Reader (runReaderT)
+import Control.Lens (view)
+import Control.Monad.Reader (asks, runReaderT)
 import qualified Data.Aeson as A
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
+import Data.Pool (Pool)
 import qualified Data.Text as T
+import Database.Persist.Sqlite (SqlBackend)
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
 import Network.Wai (Application, Request(..), Response, responseStatus)
@@ -24,18 +27,21 @@ import Network.Wai.Application.Static
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
-import System.Log.Bunyan
+import System.Log.Bunyan (withLogWriter)
+import qualified System.Log.Bunyan as Bunyan
 import System.Log.Bunyan.Context (someException)
 import System.Log.Bunyan.LogText
+import System.Log.Bunyan.RIO
 import System.Log.Bunyan.Types (textToPriority)
 import qualified Thunderbuns.Config as C
 import qualified Thunderbuns.Irc.Client as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Types as I
+import Thunderbuns.Persist
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Handler as W
 import qualified Thunderbuns.WS.Types as W
-import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
+import UnliftIO (MonadUnliftIO, liftIO)
 import UnliftIO.Async (Async, async, cancel, concurrently)
 import UnliftIO.Exception (SomeException, bracket, finally)
 import UnliftIO.MVar (newEmptyMVar, putMVar)
@@ -44,75 +50,93 @@ import WaiAppStatic.Types (toPiece)
 
 initialEnv :: IO C.Env
 initialEnv = do
-  envConfig <- input auto "./config.dhall"
-  envLogQueue <- newEmptyMVar
-  let pri = textToPriority (C.priority $ C.logging envConfig)
-  _envLogger <- rootLogger "thunderbuns.root" pri (putMVar envLogQueue)
-  envIrcConnection <- I.newConnection (C.server envConfig)
-  envWSChan <- newBroadcastTChanIO
+  _envConfig <- input auto "./config.dhall"
+  _envLogQueue <- newEmptyMVar
+  let pri = textToPriority (C.priority $ C.logging _envConfig)
+  _envLogger <- rootLogger "thunderbuns.root" pri (putMVar _envLogQueue)
+  _envIrcConnection <- I.newConnection (C.server _envConfig)
+  _envWSChan <- newBroadcastTChanIO
+  let dbc = view C.databaseConfig _envConfig
+  _envDBPool <-
+    runCreateSqlitePool
+      (C.connectionURL dbc)
+      (fromIntegral $ C.poolSize dbc)
+      (C.runMigrations dbc)
+      _envLogger
   pure
     C.Env
-      { C.envConfig
-      , C.envLogQueue
+      { C._envConfig
+      , C._envLogQueue
       , C._envLogger
-      , C.envIrcConnection
-      , C.envWSChan
+      , C._envIrcConnection
+      , C._envWSChan
+      , C._envDBPool
       }
 
 runMain :: IO ()
 runMain = do
   env <- initialEnv
-  let C.Env { C.envConfig
-            , C.envLogQueue
-            , C.envIrcConnection
-            , C.envWSChan
-            , C._envLogger
-            } = env
-  let conn = envIrcConnection
-  withLogWriter envLogQueue (C.filename $ C.logging envConfig) $
+  let conn = view C.envIrcConnection env
+  let logQueue = view C.envLogQueue env
+  let wsChan = view C.envWSChan env
+  let ircConn = view C.envIrcConnection env
+  withLogWriter logQueue (C.filename $ view C.logConfig env) $
+    flip runReaderT env $
     bracket
-      (async $ runReaderT (I.runIrcClient (I.registerConnection conn) conn) env)
-      (logAndCancel "Canceling IRC Connection" _envLogger)
+      (async $ I.runIrcClient (I.registerConnection conn) conn)
+      (logAndCancel "Canceling IRC Connection")
       (const $
        void $
        concurrently
-         (runWebServer (C.http envConfig) envIrcConnection envWSChan _envLogger)
+         (runWebServer ircConn wsChan)
          (atomically (dupTChan (I.fromServer conn)) >>=
-          queueMessagesForWSClients _envLogger envWSChan))
+          queueMessagesForWSClients (C._envDBPool env) wsChan))
 
 queueMessagesForWSClients ::
-     Logger -> TChan W.Response -> TChan I.Message -> IO ()
-queueMessagesForWSClients lg dst src =
-  forever
-    (atomically $ do
-       msg <- readTChan src
-       writeTChan dst (W.classifyIrcMessage msg)) `finally`
-  logDebug "queueMessagesForWSClients:  terminating" lg
+     (Bunyan r m, MonadUnliftIO m)
+  => Pool SqlBackend
+  -> TChan W.Response
+  -> TChan I.Message
+  -> m ()
+queueMessagesForWSClients pool dst src =
+  withNamedLogger
+    "thunderbuns.persist"
+    id
+    (go `finally` logDebug "queueMessagesForWSClients:  terminating")
+  where
+    go =
+      forever $ do
+        msg <- atomically $ readTChan src
+        lg <- asks (view logger)
+        response <- W.makeResponse msg
+        liftIO $ runInsertResponse lg response pool
+        atomically $ writeTChan dst response
 
-logAndCancel :: MonadIO m => T.Text -> Logger -> Async a -> m ()
-logAndCancel msg lg a = do
-  logInfo msg lg
+logAndCancel :: Bunyan r m => T.Text -> Async a -> m ()
+logAndCancel msg a = do
+  logInfo msg
   cancel a
 
 runWebServer ::
-     MonadUnliftIO m
-  => C.HttpConfig
-  -> I.Connection
+     (C.HasHttpConfig r, Bunyan r m, MonadUnliftIO m)
+  => I.Connection
   -> TChan W.Response
-  -> Logger
   -> m ()
-runWebServer C.HttpConfig {C.port, C.staticDir} irccon responseChan =
-  withNamedLogger "thunderbuns.http" id $ \lg -> do
-    let dir = T.unpack staticDir :: FilePath
-    logInfo (T.pack $ "Serving HTTP on port " <> show port) lg
+runWebServer irccon responseChan =
+  withNamedLogger "thunderbuns.http" id $ do
+    cfg <- asks (view C.httpConfig)
+    let dir = T.unpack $ C.staticDir cfg
+    let port = C.port cfg
+    logInfo (T.pack $ "Serving HTTP on port " <> show port)
+    lg <- asks (view logger)
     liftIO
       (runSettings
-         (mySettings lg defaultSettings)
+         (mySettings port lg defaultSettings)
          (mainApplication dir irccon responseChan lg)) `finally`
-      logInfo (T.pack $ "Stopping HTTP on port " <> show port) lg
+      logInfo (T.pack $ "Stopping HTTP on port " <> show port)
   where
-    mySettings :: Logger -> Settings -> Settings
-    mySettings lg =
+    mySettings :: Integer -> Logger -> Settings -> Settings
+    mySettings port lg =
       setPort (fromIntegral port) >>>
       setGracefulShutdownTimeout (Just 5) >>> setOnException (onException lg)
       -- >>> setInstallShutdownHandler shutdownHandler
@@ -122,7 +146,7 @@ runWebServer C.HttpConfig {C.port, C.staticDir} irccon responseChan =
     onException :: Logger -> Maybe Request -> SomeException -> IO ()
     onException lg _ ex
       -- most of these are routine things
-     = logRecord DEBUG (someException ex) "WARP exception handler" lg
+     = Bunyan.logRecord DEBUG (someException ex) "WARP exception handler" lg
 
 mainApplication ::
      FilePath -> I.Connection -> TChan W.Response -> Logger -> Application
@@ -139,9 +163,11 @@ mainApplication fp irccon responseChan = logResponseTime serve
 
 wsApplication :: I.Connection -> TChan W.Response -> Logger -> ServerApp
 wsApplication irccon responseChan lgX pending =
-  flip (withNamedLogger "thunderbuns.ws" id) lgX $ \lg -> do
+  flip (Bunyan.withNamedLogger "thunderbuns.ws" id) lgX $ \lg -> do
     gc <- acceptRequest pending >>= W.guardedConnection
-    logInfo "Connection accepted, starting ping/irc subscription threads" lg
+    runReaderT
+      (logInfo "Connection accepted, starting ping/irc subscription threads")
+      lg
     bracket
       (startThreads gc lg)
       (stopThreads lg)
@@ -154,15 +180,17 @@ wsApplication irccon responseChan lgX pending =
       a2 <- async $ ircSubscription ch gc lg
       pure (a1, a2)
     stopThreads :: Logger -> (Async (), Async ()) -> IO ()
-    stopThreads lg (a1, a2) = do
-      logAndCancel "Stopping ping thread" lg a1
-      logAndCancel "Stopping irc subscription thread" lg a2
+    stopThreads lg (a1, a2) =
+      flip runReaderT lg $ do
+        logAndCancel "Stopping ping thread" a1
+        logAndCancel "Stopping irc subscription thread" a2
     pingThread :: W.GuardedConnection -> Int -> IO ()
     pingThread gc !n = do
       threadDelay (10 * 1000 * 1000)
       W.sendGuardedPing gc ("ping " <> fromString (show n))
       pingThread gc (n + 1)
-    ircSubscription :: TChan W.Response -> W.GuardedConnection -> Logger -> IO ()
+    ircSubscription ::
+         TChan W.Response -> W.GuardedConnection -> Logger -> IO ()
     ircSubscription chan gc lg =
       forever $ do
         resp <- atomically $ readTChan chan
@@ -178,10 +206,10 @@ logResponseTime = go
   where
     go :: (Logger -> Application) -> Logger -> Application
     go app lg req respond =
-      withNamedLogger
+      Bunyan.withNamedLogger
         "thunderbuns.http"
         (requestLoggingContext req)
-        (logDuration' $ \cb lg' ->
+        (Bunyan.logDuration' $ \cb lg' ->
            app lg' req $ \res -> do
              responded <- respond res
              cb (responseLoggingContext res M.empty)

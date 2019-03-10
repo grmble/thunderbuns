@@ -9,6 +9,8 @@ module Thunderbuns.WS.Types where
 
 import qualified Data.Aeson as A
 import Data.Aeson.Types
+import Data.ByteString.D64.UUID (OrderedUUID)
+import Data.Coerce (coerce)
 import Data.Hashable (Hashable)
 import qualified Data.Scientific as SC
 import qualified Data.Text as T
@@ -72,9 +74,11 @@ data Response
   -- ^ There was an error with request rqid
   | DecodeError { errorMsg :: !Text }
   -- ^ The request could not be decode, so we can't reply with a request id
-  | GenericMessage { msg :: !Text }
+  | GenericMessage { uuid :: OrderedUUID
+                   , msg :: !Text }
   -- ^ A generic message is anything from the IRC server
-  | ChannelMessage { from :: !From
+  | ChannelMessage { uuid :: OrderedUUID
+                   , from :: !From
                    , cmd :: !Text
                    , channels :: ![Channel]
                    , msg :: !Text }
@@ -142,6 +146,9 @@ data From = From
 instance A.FromJSON From
 
 instance A.ToJSON From
+
+fromToText :: From -> Text
+fromToText From {nick, user, host} = coerce nick <> "!" <> user <> "@" <> host
 
 -- | A nick represents an IRC User
 newtype Nick =
