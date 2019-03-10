@@ -7,7 +7,6 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Iso')
 import Data.Lens.Iso.Newtype (_Newtype)
-import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Foreign (Foreign, F, readInt, readString, unsafeToForeign)
 import Foreign.Class (class Decode, class Encode)
@@ -40,23 +39,15 @@ instance decodeRequest :: Decode Request where decode = genericDecode interfaceO
 instance encodeRequest :: Encode Request where encode = genericEncode interfaceOptions
 
 
--- | Response defines anything that can be received from the backend
-data ResponseWithID = ResponseWithID { rqid :: Maybe RequestID, rs :: Response }
-
-derive instance genericResponseWithID :: Generic ResponseWithID _
-derive instance eqResponseWithID :: Eq ResponseWithID
-instance showResponseWithID :: Show ResponseWithID where show = genericShow
-instance decodeResponseWithID :: Decode ResponseWithID where decode = genericDecode interfaceOptions
-instance encodeResponseWithID :: Encode ResponseWithID where encode = genericEncode interfaceOptions
-
 data Response
-  = Done
+  = Done { rqid :: RequestID }
+  | GenericError { rqid :: RequestID, errorMsg :: String }
+  | DecodeError { errorMsg :: String }
   | GenericMessage { msg :: String }
   | ChannelMessage { from :: From
                    , cmd :: String
                    , channels :: Array Channel
                    , msg :: String }
-  | ErrorMessage { errorMsg :: String }
 
 derive instance genericResponse :: Generic Response _
 derive instance eqResponse :: Eq Response

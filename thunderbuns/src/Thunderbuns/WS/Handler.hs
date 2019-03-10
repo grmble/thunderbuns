@@ -58,44 +58,44 @@ handleConn irc gc@GuardedConnection {conn} =
     logDebug ("Response: " <> toText (A.encode resp))
     sendGuardedTextData gc (A.encode resp)
   where
-    handleBytes :: L.ByteString -> EIO m W.ResponseWithID
+    handleBytes :: L.ByteString -> EIO m W.Response
     handleBytes bs = do
       W.RequestWithID {rqid, rq} <- decodeData bs
-      handleRequest irc (Just rqid) rq
+      handleRequest irc rqid rq
     -- decode the json from the payload
     decodeData :: L.ByteString -> EIO m W.RequestWithID
     decodeData bs =
-      stringError Nothing "Error decoding request" `withExceptT`
+      stringError Nothing "Can not decode request: " `withExceptT`
       ExceptT (pure $ A.eitherDecode bs)
     -- helper for sending error responses
-    errorResponse :: (Maybe W.RequestID, Text) -> W.ResponseWithID
-    errorResponse (rqid, msg) = W.ResponseWithID rqid (W.ErrorMessage msg)
+    errorResponse :: (Maybe W.RequestID, Text) -> W.Response
+    errorResponse (rqid, msg) = case rqid of
+      Nothing -> W.DecodeError msg
+      Just rqid' -> W.GenericError rqid' msg
 
 -- | Map a string error into the error type
 stringError :: Maybe W.RequestID -> Text -> String -> (Maybe W.RequestID, Text)
 stringError rqid msg err = (rqid, msg <> toText err)
 
 -- | handle a valid request
---
--- the request id is always present, but it's easier to pass around as a Maybe
 handleRequest ::
      forall m. MonadUnliftIO m
   => I.Connection
-  -> Maybe W.RequestID
+  -> W.RequestID
   -> W.Request
-  -> EIO m W.ResponseWithID
+  -> EIO m W.Response
 handleRequest irc rqid = go
   where
-    go :: W.Request -> EIO m W.ResponseWithID
+    go :: W.Request -> EIO m W.Response
     go (W.GenericCommand cmd) = do
       cmd' <- parseCommand cmd
       sendCommand cmd'
-      pure $ W.ResponseWithID rqid W.Done
-    go W.ChannelCommand {} = throwError (rqid, "IMPLEMENT ChannelCommand")
+      pure $ W.Done rqid
+    go W.ChannelCommand {} = throwError (Just rqid, "IMPLEMENT ChannelCommand")
     parseCommand :: Text -> EIO m I.Command
     parseCommand cmd = do
       let bs = T.encodeUtf8 cmd
-      stringError rqid "Error parsing IRC command: " `withExceptT`
+      stringError (Just rqid) "Error parsing IRC command: " `withExceptT`
         ExceptT (pure (parseOnly (I.parseCommand <* endOfInput) bs))
     --
     -- helper for sending commands
@@ -103,19 +103,18 @@ handleRequest irc rqid = go
     sendCommand cmd = do
       b <- liftIO (I.sendCommand irc cmd)
       unless b $
-        throwError (rqid, "Can not send IRC command, server not connected")
+        throwError (Just rqid, "Can not send IRC command, server not connected")
 
 -- | Send an IRC message over the websocket
 sendResponse ::
      (Bunyan r m, MonadUnliftIO m)
   => I.ServerConfig
   -> GuardedConnection
-  -> I.Message
+  -> W.Response
   -> m ()
-sendResponse _ gc msg = do
-  let msg' = W.ResponseWithID Nothing (classifyIrcMessage msg)
-  logTrace ("subscription message to websocket: " <> toText (A.encode msg'))
-  sendGuardedTextData gc (A.encode msg')
+sendResponse _ gc response = do
+  logTrace ("subscription message to websocket: " <> toText (A.encode response))
+  sendGuardedTextData gc (A.encode response)
 
 -- turns irc messages into GenericMessage or ChannelMessage / PrivateMessage
 classifyIrcMessage :: I.Message -> W.Response

@@ -9,7 +9,9 @@ import Dhall (Interpret)
 import System.Log.Bunyan.RIO (HasLogger(..), Logger)
 import qualified Thunderbuns.Irc.Config as IC
 import Thunderbuns.Irc.Types
+import Thunderbuns.WS.Types
 import UnliftIO.MVar
+import UnliftIO.STM
 
 -- | Logging Configuration
 --
@@ -43,6 +45,7 @@ data Env = Env
   , _envLogger :: !Logger
   , envIrcConnection :: !Connection
   , envLogQueue :: !(MVar A.Object)
+  , envWSChan :: !(TChan Response)
   }
 
 $(makeClassy ''Env)

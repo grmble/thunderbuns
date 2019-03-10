@@ -34,7 +34,7 @@ data Msg
   | CurrentViewMsg MT.CurrentView
   | ActiveChannelMsg (Maybe WS.Channel)
   | RequestMsg WS.Request
-  | ResponseMsg WS.ResponseWithID
+  | ResponseMsg WS.Response
 
 -- XXX generic instance for FormMsg ...
 msgShow :: Msg -> String

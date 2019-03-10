@@ -13,5 +13,4 @@ instance PersistField OrderedUUID where
   toPersistValue (OrderedUUID x) = PersistByteString x
   fromPersistValue (PersistByteString x)= Right $ OrderedUUID x
   fromPersistValue (PersistText x)= Right $ OrderedUUID (T.encodeUtf8 x)
-  fromPersistValue _ = Left "xxx"
-
+  fromPersistValue _ = Left "unable to decode OrderedUUID"

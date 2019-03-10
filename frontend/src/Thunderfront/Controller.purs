@@ -12,14 +12,13 @@ import Control.Monad.Writer (WriterT, execWriterT, tell)
 import Control.Plus (empty)
 import Data.CatList as L
 import Data.Foldable (for_)
-import Data.Lens (assign, modifying, over, set, use, view)
+import Data.Lens (assign, modifying, over, set, use)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Set as S
 import Data.Tuple (Tuple(..))
 import Effect.Class (liftEffect)
 import Thunderfront.Scroll (isScrolledToBottom, scrollToBottom)
-import Thunderfront.Sensor (prime)
 import Thunderfront.Types.Model (Model, NickAndMsg(..), activeChannel, activeRequests, channelMessages, currentView, inputModel, loginFormModel, maxRequestID, maxRequestID', messages, webSocket)
 import Thunderfront.Types.Msg (Msg(..))
 import Thunderfront.Types.WS as WS
@@ -43,7 +42,7 @@ update (ActiveChannelMsg x) = runM $ do
   modifying activeChannel (\current -> if current == x then Nothing else x)
   scrollMessages
 update (RequestMsg x) = runM $ updateRequest x
-update (ResponseMsg (WS.ResponseWithID x)) = runM $ updateResponse x.rqid x.rs
+update (ResponseMsg x) = runM $ updateResponse x
 
 updateWebSocket :: Maybe WebSocket -> M Unit
 updateWebSocket Nothing = do
@@ -63,27 +62,29 @@ updateRequest req = do
       -- also: reset the input box ...
       tell $ pure (MessageInputMsg "")
 
-updateResponse :: Maybe WS.RequestID -> WS.Response -> M Unit
-updateResponse rqid WS.Done = markDone rqid
-updateResponse rqid (WS.GenericMessage {msg}) = do
+updateResponse :: WS.Response -> M Unit
+updateResponse (WS.Done {rqid})= markDone rqid
+updateResponse (WS.GenericError {rqid, errorMsg}) = do
   markDone rqid
+  error errorMsg "Error from Backend"
+updateResponse (WS.DecodeError {errorMsg}) = do
+   -- we sent a request that could not be parsed
+   -- we don't get the id in the error
+   -- so we reset them all
+   assign activeRequests S.empty
+   error errorMsg "Error from Backend"
+updateResponse (WS.GenericMessage {msg}) = do
   modifying messages (flip L.snoc msg)
   scrollMessagesIfAtEnd
-updateResponse rqid (WS.ChannelMessage {from, cmd, channels, msg}) = do
-  markDone rqid
+updateResponse (WS.ChannelMessage {from, cmd, channels, msg}) = do
   let WS.From {nick} = from
   for_ channels $ \channel -> do
     let nm = NickAndMsg { nick, msg }
     modifying channelMessages (M.insertWith (<>) channel (L.singleton nm))
   scrollMessagesIfAtEnd
-updateResponse rqid (WS.ErrorMessage {errorMsg}) = do
-  -- in case the request could not be parsed
-  assign activeRequests S.empty
-  error errorMsg "Error from Backend"
 
-markDone :: Maybe WS.RequestID -> M Unit
-markDone Nothing = pure unit
-markDone (Just rqid) = modifying activeRequests $ S.delete rqid
+markDone :: WS.RequestID -> M Unit
+markDone rqid = modifying activeRequests $ S.delete rqid
 
 error :: String -> String -> M Unit
 error msg = tell <<< unitTask <<< const <<< liftEffect <<< T.error msg
