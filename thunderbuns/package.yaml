@@ -31,6 +31,8 @@ dependencies:
 - connection
 - data-default
 - dhall
+- d64
+- d64-uuid
 - formatting
 - hashable
 - http-api-data
@@ -42,12 +44,14 @@ dependencies:
 - optparse-applicative
 - persistent
 - persistent-sqlite
+- persistent-template
 - scientific
 - text
 - time
 - transformers
 - unliftio
 - unordered-containers
+- uuid
 - wai
 - wai-app-static
 - wai-extra

@@ -21,13 +21,8 @@ spec = do
     it "user/privmsg/multiple channels" $
       classify (example {msgArgs = ["#haskell,#scala", "hi"]}) `shouldSatisfy`
       isChannelMessage
-    -- a missing prefix means the message was generated locally
-    -- the server only sends prefixed messages
-    it "no prefix/privmsg/channel" $
-      classify (example {msgPrefix = Nothing}) `shouldSatisfy`
-      isChannelMessage
     it "from servername -> generic" $
-      classify (example {msgPrefix = Just "the.server.name"}) `shouldNotSatisfy`
+      classify (example {msgPrefix = "the.server.name"}) `shouldNotSatisfy`
       isChannelMessage
     it "some other command -> generic" $
       classify (example {msgCmd = Cmd "LIST"}) `shouldNotSatisfy`
@@ -59,12 +54,12 @@ spec = do
           From {nick = Nick "nick", user = "username", host = "the.hostname"}
 
 classify :: Message -> Response
-classify = classifyIrcMessage (From (Nick "ownNick") "ownNick" "localhost")
+classify = classifyIrcMessage
 
 example :: Message
 example =
   Message
-    { msgPrefix = Just "nick!username@the.hostname"
+    { msgPrefix = "nick!username@the.hostname"
     , msgCmd = Cmd "PRIVMSG"
     , msgArgs = ["#haskell", "hello", "ladies", "and gentlemen"]
     }

@@ -64,6 +64,7 @@ updateRequest req = do
       tell $ pure (MessageInputMsg "")
 
 updateResponse :: Maybe WS.RequestID -> WS.Response -> M Unit
+updateResponse rqid WS.Done = markDone rqid
 updateResponse rqid (WS.GenericMessage {msg}) = do
   markDone rqid
   modifying messages (flip L.snoc msg)

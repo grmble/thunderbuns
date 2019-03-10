@@ -5,19 +5,15 @@ import Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString as Atto
 import qualified Data.ByteString as B
 import qualified Data.Word as W
-import Thunderbuns.Tlude
 import Thunderbuns.Irc.Types
+import Thunderbuns.Tlude
 
 -- | Parse a message from an irc server
 --
 -- The message is expected as on-the-wire.  it must be
 -- terminated by CR LF
 parseMessage :: Parser Message
-parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs
-
--- | Return the offending line in case the message could not be parsed
-parseMessageOrLine :: Parser (Either ByteString Message)
-parseMessageOrLine = Right <$> parseMessage <|> Left <$> parseLine
+parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs <?> "Message"
 
 -- | Bytestring representation of a parsed IRC message.
 --
@@ -26,7 +22,7 @@ parseMessageOrLine = Right <$> parseMessage <|> Left <$> parseLine
 ircLine :: Message -> ByteString
 ircLine (Message pre cmd args) =
   let cmdStr = ircCmd cmd
-      lst = maybe [] (pure . (<>) ":") pre ++ cmdStr : args
+      lst = (":" <> pre) : cmdStr : args
    in B.intercalate " " (quoteLastArg lst) <> "\r\n"
 
 ircCmd :: Cmd -> ByteString
@@ -35,12 +31,13 @@ ircCmd (Cmd bs) = bs
 
 -- | Parse an irc command
 parseCommand :: Parser Command
-parseCommand = Command <$> parsePrefix <*> token middle <*> parseArgs'
+parseCommand =
+  Command <$> token middle <*> parseArgs' <?> "Command"
 
 -- | Bytestring representation of a Command
 ircCmdLine :: Command -> ByteString
-ircCmdLine (Command pre cmd args) =
-  let lst = maybe [] (pure . (<>) ":") pre ++ cmd : args
+ircCmdLine (Command cmd args) =
+  let lst = cmd : args
    in ircArgs lst <> "\r\n"
 
 ircArgs :: [ByteString] -> ByteString
@@ -68,9 +65,9 @@ toCode x = NumericCode x
 isErrorCode :: Code -> Bool
 isErrorCode c = fromCode c >= 400
 
-parsePrefix :: Parser (Maybe ByteString)
+parsePrefix :: Parser ByteString
 parsePrefix =
-  option Nothing (fmap Just (token (char ':' *> takeWhile1 notSpCrLfCl)))
+  token (string ":" *> takeWhile1 notSpCrLfCl) <?> "Mandatory prefix"
 
 parseCmd :: Parser Cmd
 parseCmd =
@@ -80,17 +77,18 @@ parseCmd =
     threeDigitCode = fmap (Response . toCode . read) (count 3 digit)
 
 parseArgs :: Parser [ByteString]
-parseArgs = many (trailing <|> token middle) <* crLf
+parseArgs = many (trailing <|> token middle) <* crLf <?> "Args"
 
 parseArgs' :: Parser [ByteString]
-parseArgs' = many (trailing <|> token middle) <* option () crLf
+parseArgs' =
+  many (trailing <|> token middle) <* option () crLf <?> "Args CRLF optional"
 
 token :: Parser a -> Parser a
 token p = p <* skipMany (char ' ')
 
 -- | Matches anything but space, cr, lf or :
 middle :: Parser ByteString
-middle = Atto.takeWhile1 notSpCrLfCl
+middle = Atto.takeWhile1 notSpCrLfCl <?> "Middle - at least 1 char, no prefix allowed"
 
 -- | Matches : followed by anything but cr or lf or null
 trailing :: Parser ByteString
@@ -111,7 +109,7 @@ notCrLf 0x0a = False
 notCrLf _ = True
 
 crLf :: Parser ()
-crLf = string "\r\n" $> ()
+crLf = string "\r\n" $> () <?> "Must be terminated by CRLF"
 
 skipCrLf :: Parser ()
 skipCrLf = skipMany1 crLf

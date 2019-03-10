@@ -34,16 +34,15 @@ registerConnection conn msgChan cmdQueue = do
   let n = T.encodeUtf8 nick
   let fn = T.encodeUtf8 fullname
   let p = T.encodeUtf8 serverPassword
-  unless (B.null p) $
-    atomically $ writeTBQueue cmdQueue (Command Nothing "PASS" [p])
-  atomically $ writeTBQueue cmdQueue (Command Nothing "NICK" [n])
-  atomically $ writeTBQueue cmdQueue (Command Nothing "USER" [n, "0", "*", fn])
+  unless (B.null p) $ atomically $ writeTBQueue cmdQueue (Command "PASS" [p])
+  atomically $ writeTBQueue cmdQueue (Command "NICK" [n])
+  atomically $ writeTBQueue cmdQueue (Command "USER" [n, "0", "*", fn])
   msg <- atomically $ readTChan msgChan
   case msgCmd msg of
     Response RplWelcome ->
       atomically $
       for_ (channels $ server conn) $ \cn ->
-        writeTBQueue cmdQueue (Command Nothing "JOIN" [T.encodeUtf8 cn])
+        writeTBQueue cmdQueue (Command "JOIN" [T.encodeUtf8 cn])
     _ ->
       throwString
         ("Unexpected message, waiting for 001, got: " <> show (ircLine msg))
@@ -62,7 +61,7 @@ pongPing nick msgChan cmdQueue =
        msg <- atomically $ readTChan msgChan
        case msgCmd msg of
          Cmd "PING" ->
-           atomically $ writeTBQueue cmdQueue (Command Nothing "PONG" [nick])
+           atomically $ writeTBQueue cmdQueue (Command "PONG" [nick])
          _ -> pure ())
     (logDebug "IRC Pongping thread terminated.")
 
@@ -70,8 +69,35 @@ pongPing nick msgChan cmdQueue =
 --
 -- Returns true if the message was queued, false if the server
 -- is not currently connected (in which case the message was not queued)
+--
+-- This also fake a server reply for the command (because the
+-- server does not send us our own messages back).
+-- This way the same path is taken for our own commands back into
+-- the client.
+--
+-- Exception:  the code handling registration does NOT use this
+-- function, it just sends to the server.  This is good because
+-- this way the passwords involved are less exposed.
 sendCommand :: MonadUnliftIO m => Connection -> Command -> m Bool
 sendCommand conn cmd =
-  atomically (readTVar (status conn)) >>= \case
-    Connected -> atomically (writeTBQueue (toServer conn) cmd) $> True
+  atomically $
+  readTVar (status conn) >>= \case
+    Connected -> do
+      writeTBQueue (toServer conn) cmd
+      writeTChan (fromServer conn) (fakeMessage conn cmd)
+      pure True
     _ -> pure False
+
+-- | Fake a message from a command
+fakeMessage :: Connection -> Command -> Message
+fakeMessage conn cmd =
+  Message
+    { msgPrefix = fakePrefix
+    , msgCmd = Cmd (cmdCmd cmd)
+    , msgArgs = cmdArgs cmd
+    }
+    -- XXX we should track the servers prefix for us
+  where
+    fakePrefix =
+      let n = T.encodeUtf8 $ nick (server conn)
+       in n <> "!" <> n <> "@localhost"

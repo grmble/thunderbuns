@@ -50,7 +50,8 @@ instance decodeResponseWithID :: Decode ResponseWithID where decode = genericDec
 instance encodeResponseWithID :: Encode ResponseWithID where encode = genericEncode interfaceOptions
 
 data Response
-  = GenericMessage { msg :: String }
+  = Done
+  | GenericMessage { msg :: String }
   | ChannelMessage { from :: From
                    , cmd :: String
                    , channels :: Array Channel

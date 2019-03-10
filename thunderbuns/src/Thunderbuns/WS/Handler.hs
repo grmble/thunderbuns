@@ -90,8 +90,7 @@ handleRequest irc rqid = go
     go (W.GenericCommand cmd) = do
       cmd' <- parseCommand cmd
       sendCommand cmd'
-      let own = fakeOwnFrom (I.server irc)
-      pure $ W.ResponseWithID rqid (classifyIrcCommand own cmd')
+      pure $ W.ResponseWithID rqid W.Done
     go W.ChannelCommand {} = throwError (rqid, "IMPLEMENT ChannelCommand")
     parseCommand :: Text -> EIO m I.Command
     parseCommand cmd = do
@@ -106,9 +105,6 @@ handleRequest irc rqid = go
       unless b $
         throwError (rqid, "Can not send IRC command, server not connected")
 
-fakeOwnFrom :: I.ServerConfig -> W.From
-fakeOwnFrom irc = W.From (W.Nick $ I.nick irc) (I.nick irc) "localhost"
-
 -- | Send an IRC message over the websocket
 sendResponse ::
      (Bunyan r m, MonadUnliftIO m)
@@ -116,21 +112,16 @@ sendResponse ::
   -> GuardedConnection
   -> I.Message
   -> m ()
-sendResponse irc gc msg = do
-  let msg' = W.ResponseWithID Nothing (classifyIrcMessage (fakeOwnFrom irc) msg)
+sendResponse _ gc msg = do
+  let msg' = W.ResponseWithID Nothing (classifyIrcMessage msg)
   logTrace ("subscription message to websocket: " <> toText (A.encode msg'))
   sendGuardedTextData gc (A.encode msg')
 
--- turns a command we sent to the server into a response message
-classifyIrcCommand :: W.From -> I.Command -> W.Response
-classifyIrcCommand myFrom I.Command {cmdPrefix, cmdCmd, cmdArgs} =
-  classifyIrcMessage myFrom (I.Message cmdPrefix (I.Cmd cmdCmd) cmdArgs)
-
 -- turns irc messages into GenericMessage or ChannelMessage / PrivateMessage
-classifyIrcMessage :: W.From -> I.Message -> W.Response
-classifyIrcMessage myFrom m@I.Message {msgPrefix, msgCmd, msgArgs} =
+classifyIrcMessage :: I.Message -> W.Response
+classifyIrcMessage m@I.Message {msgPrefix, msgCmd, msgArgs} =
   fromMaybe (W.GenericMessage (toText $ I.ircLine m)) $ do
-    from <- maybe (Just myFrom) parseFrom' (toText <$> msgPrefix)
+    from <- parseFrom' (toText msgPrefix)
     cmd <-
       case msgCmd of
         I.Cmd x@"PRIVMSG" -> Just $ toText x

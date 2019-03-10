@@ -45,9 +45,10 @@ data Status
   | Connected
 
 -- | A command to the irc server
+--
+-- We never send with a prefix, so Command does not have one
 data Command = Command
-  { cmdPrefix :: !(Maybe ByteString)
-  , cmdCmd :: !ByteString
+  { cmdCmd :: !ByteString
   , cmdArgs :: ![ByteString]
   } deriving (Eq, Ord, Show)
 
@@ -65,8 +66,12 @@ data Cmd
   deriving (Eq, Ord, Show)
 
 -- | A message from the IRC server
+--
+-- This MUST have a prefix - everything from the server has one.
+-- If we generate a message to simulate a server response,
+-- it has one as well.
 data Message = Message
-  { msgPrefix :: !(Maybe ByteString)
+  { msgPrefix :: !ByteString
   , msgCmd :: !Cmd
   , msgArgs :: ![ByteString]
   } deriving (Eq, Ord, Show)

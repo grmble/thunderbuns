@@ -79,7 +79,10 @@ instance A.ToJSON ResponseWithID
 -- the haskell side is changed because there is
 -- more documentation for aeson.
 data Response
-  = GenericMessage { msg :: !Text }
+  = Done
+  -- ^ Generic reply for things that don't get an answer
+  -- or get that answer via broadcast without request id.
+  |  GenericMessage { msg :: !Text }
   -- ^ A generic message is anything from the IRC server
   | ChannelMessage { from :: !From
                    , cmd :: !Text
@@ -106,6 +109,7 @@ instance A.FromJSON Response where
         _ -> fail ("Unknown Response constructor: " <> T.unpack tag)
 
 instance A.ToJSON Response where
+  toJSON Done  = object [ "tag" .= ("Done" :: Text) ]
   toJSON GenericMessage {..} =
     object
       ["tag" .= ("GenericMessage" :: Text), "contents" .= object ["msg" .= msg]]
