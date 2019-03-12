@@ -26,14 +26,13 @@ runCreateSqlitePool url size runmig lg = do
 runInsertResponse :: Logger -> W.Response -> Pool SqlBackend -> IO ()
 runInsertResponse lg response pool =
   flip logDuration lg $
-  const $
-  withResource pool (runReaderT (insertResponse response))
+  const $ withResource pool (runReaderT (insertResponse response))
 
 insertResponse :: W.Response -> ReaderT SqlBackend IO ()
 insertResponse resp = for_ (responseToMessage resp) (void . insert)
 
-
-runSelectChannelBefore :: W.Channel -> Maybe OrderedUUID -> Pool SqlBackend -> IO [W.Response]
+runSelectChannelBefore ::
+     W.Channel -> Maybe OrderedUUID -> Pool SqlBackend -> IO [W.Response]
 runSelectChannelBefore channel before pool =
   withResource pool $ runReaderT (selectChannelBefore channel before)
 
@@ -45,12 +44,14 @@ selectChannelBefore channel before = do
       Nothing ->
         selectList
           [MessageChannel ==. coerce channel]
-          [LimitTo 10, Desc MessageUuid]
+          [LimitTo channelBeforeLimit, Desc MessageUuid]
       Just uuid ->
         selectList
           [MessageChannel ==. coerce channel, MessageUuid <. uuid]
-          [LimitTo 10, Desc MessageUuid]
+          [LimitTo channelBeforeLimit, Desc MessageUuid]
   pure $ foldMap (\(Entity _ x) -> messageToResponse x) messages
+  where
+    channelBeforeLimit = 50
 
 messageToResponse :: Message -> [W.Response]
 messageToResponse (Message uuid from cmd channel msg) =

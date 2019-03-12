@@ -15,6 +15,7 @@ import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
 import Data.Pool (Pool)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import Database.Persist.Sqlite (SqlBackend)
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
@@ -26,7 +27,8 @@ import Network.Wai.Application.Static
   )
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.WebSockets (websocketsOr)
-import Network.Wai.Middleware.Approot (fromRequest)
+import Network.Wai.Middleware.Approot (fromRequest, hardcoded)
+import Network.Wai.Middleware.Gzip (GzipSettings(..), GzipFiles(..), def, gzip, gzipFiles)
 import Network.Wai.Middleware.HttpAuth (basicAuth)
 import Network.Wai.UrlMap (mapUrls, mount)
 import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
@@ -134,15 +136,13 @@ runWebServer pool irccon responseChan =
   withNamedLogger "thunderbuns.http" id $ do
     closeAction <- newEmptyMVar
     cfg <- asks (view C.httpConfig)
-    let dir = T.unpack $ C.staticDir cfg
-    let root = C.rootPrefix cfg
     let port = C.port cfg
     logInfo (T.pack $ "Serving HTTP on port " <> show port)
     lg <- asks (view logger)
     liftIO
       (runSettings
          (mySettings closeAction (fromIntegral port) lg defaultSettings)
-         (mainApplication root dir pool irccon responseChan lg)) `finally` do
+         (mainApplication cfg pool irccon responseChan lg)) `finally` do
       logInfo (T.pack $ "Stopping HTTP on port " <> show port)
       action <- takeMVar closeAction
       liftIO action
@@ -150,10 +150,9 @@ runWebServer pool irccon responseChan =
     mySettings :: MVar (IO ()) -> Integer -> Logger -> Settings -> Settings
     mySettings closeAction port lg =
       setPort (fromIntegral port) >>>
-      setGracefulShutdownTimeout (Just 1) >>>
+      setGracefulShutdownTimeout (Just 0) >>>
       setOnException (onException lg) >>>
-      setInstallShutdownHandler
-        (putMVar closeAction)
+      setInstallShutdownHandler (putMVar closeAction)
     -- shutdownHandler closeSocket =
     --  void $ installHandler sigTERM (CatchOnce $ closeSocket) Nothing
     onException :: Logger -> Maybe Request -> SomeException -> IO ()
@@ -162,28 +161,41 @@ runWebServer pool irccon responseChan =
      = Bunyan.logRecord DEBUG (someException ex) "WARP exception handler" lg
 
 mainApplication ::
-     Text -> FilePath -> Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> Application
-mainApplication root fp pool irccon responseChan = logResponseTime serve
+     C.HttpConfig
+  -> Pool SqlBackend
+  -> I.Connection
+  -> TChan W.Response
+  -> Logger
+  -> Application
+mainApplication cfg pool irccon responseChan = logResponseTime serve
   where
     serve :: Logger -> Application
     serve lg =
       basicAuth
-        (\u p -> pure $ toText u == authUser && toText p == fromMaybe "" (nickPass <|> srvPass))
+        (\u p ->
+           pure $
+           toText u == authUser &&
+           toText p == fromMaybe "" (nickPass <|> srvPass))
         "Thunderbuns" $
-      fromRequest $
+      gzip (def {gzipFiles = GzipPreCompressed GzipIgnore}) $
+      setAppRootOrGuess $
       mapUrls $
-      mount root $
+      mount (C.rootPrefix cfg) $
       websocketsOr
         defaultConnectionOptions
         (wsApplication pool irccon responseChan lg)
         (staticApp settings)
     settings =
-      (defaultWebAppSettings fp) {ssIndices = [fromJust $ toPiece "index.html"]}
+      (defaultWebAppSettings (T.unpack $ C.staticDir cfg))
+        {ssIndices = [fromJust $ toPiece "index.html"]}
     authUser = I.nick $ I.server irccon
     nickPass = I.nicksrvPassword $ I.server irccon
     srvPass = I.serverPassword $ I.server irccon
+    setAppRootOrGuess =
+      maybe fromRequest (hardcoded . T.encodeUtf8) (C.appRoot cfg)
 
-wsApplication :: Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> ServerApp
+wsApplication ::
+     Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> ServerApp
 wsApplication pool irccon responseChan lgX pending =
   flip (Bunyan.withNamedLogger "thunderbuns.ws" id) lgX $ \lg -> do
     gc <- acceptRequest pending >>= W.guardedConnection
