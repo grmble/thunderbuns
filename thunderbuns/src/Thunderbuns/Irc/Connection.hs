@@ -92,12 +92,13 @@ sendCommand conn cmd =
 fakeMessage :: Connection -> Command -> Message
 fakeMessage conn cmd =
   Message
-    { msgPrefix = fakePrefix
+    { msgPrefix = Just (fakePrefix conn)
     , msgCmd = Cmd (cmdCmd cmd)
     , msgArgs = cmdArgs cmd
     }
-    -- XXX we should track the servers prefix for us
-  where
-    fakePrefix =
-      let n = T.encodeUtf8 $ nick (server conn)
-       in n <> "!" <> n <> "@localhost"
+
+-- XXX we should track the servers prefix for us
+fakePrefix :: Connection -> ByteString
+fakePrefix conn =
+  let n = T.encodeUtf8 $ nick (server conn)
+    in n <> "!" <> n <> "@localhost"

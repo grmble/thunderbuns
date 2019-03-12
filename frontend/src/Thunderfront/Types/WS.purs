@@ -7,6 +7,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Iso')
 import Data.Lens.Iso.Newtype (_Newtype)
+import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Foreign (Foreign, F, readInt, readString, unsafeToForeign)
 import Foreign.Class (class Decode, class Encode)
@@ -30,7 +31,7 @@ instance encodeRequestWithID :: Encode RequestWithID where encode = genericEncod
 -- | and actually sending it out
 data Request
   = GenericCommand { cmd :: String }
-  | ChannelCommand { nick :: Nick, cmd :: String, channel :: Channel, msg :: String }
+  | GetChannelMessages { channel :: Channel , before :: (Maybe String) }
 
 derive instance genericRequest :: Generic Request _
 derive instance eqRequest :: Eq Request

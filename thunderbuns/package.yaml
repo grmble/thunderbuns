@@ -41,7 +41,6 @@ dependencies:
 - lens  # it's pulled in by dhall (i think), we might as well use it
 - monad-logger # for runNoLoggingT
 - mtl
-- network-conduit-tls
 - optparse-applicative
 - persistent
 - persistent-sqlite

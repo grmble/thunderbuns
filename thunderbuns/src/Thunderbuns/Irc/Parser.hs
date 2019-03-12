@@ -22,7 +22,7 @@ parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs <?> "Message"
 ircLine :: Message -> ByteString
 ircLine (Message pre cmd args) =
   let cmdStr = ircCmd cmd
-      lst = (":" <> pre) : cmdStr : args
+      lst = maybe [] (\x -> [":" <> x]) pre ++ (cmdStr : args)
    in B.intercalate " " (quoteLastArg lst) <> "\r\n"
 
 ircCmd :: Cmd -> ByteString
@@ -65,9 +65,9 @@ toCode x = NumericCode x
 isErrorCode :: Code -> Bool
 isErrorCode c = fromCode c >= 400
 
-parsePrefix :: Parser ByteString
+parsePrefix :: Parser (Maybe ByteString)
 parsePrefix =
-  token (string ":" *> takeWhile1 notSpCrLfCl) <?> "Mandatory prefix"
+  optional (token (string ":" *> takeWhile1 notSpCrLfCl) <?> "prefix")
 
 parseCmd :: Parser Cmd
 parseCmd =

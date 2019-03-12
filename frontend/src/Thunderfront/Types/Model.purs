@@ -5,7 +5,6 @@ import Prelude
 
 import Bonsai.Forms (FormModel)
 import Bonsai.Forms.Model (emptyFormModel)
-import Data.CatList as L
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Lens')
@@ -44,8 +43,8 @@ newtype Model =
   , activeRequests :: S.Set WS.RequestID
 
   , activeChannel :: Maybe WS.Channel
-  , channelMessages :: M.Map WS.Channel (L.CatList NickAndMsg)
-  , messages :: L.CatList String
+  , channelMessages :: M.Map WS.Channel (M.Map String NickAndMsg)
+  , messages :: M.Map String String
 
   , formModels :: FormModels
   , currentView :: CurrentView
@@ -58,7 +57,7 @@ emptyModel =
         , activeRequests: S.empty
         , activeChannel: Nothing
         , channelMessages: M.empty
-        , messages: L.empty
+        , messages: M.empty
         , formModels: FormModels { inputModel: ""
                                  , loginFormModel: emptyFormModel}
         , currentView: ChannelView }
@@ -68,7 +67,7 @@ derive instance genericModel :: Generic Model _
 instance showModel :: Show Model where show = genericShow
 
 -- | Helper for record with nick and msg
-newtype NickAndMsg = NickAndMsg { nick :: WS.Nick, msg :: String }
+newtype NickAndMsg = NickAndMsg { uuid :: String, nick :: WS.Nick, msg :: String }
 derive instance newtypeNickAndMsg :: Newtype NickAndMsg _
 derive instance genericNickAndMsg :: Generic NickAndMsg _
 instance showNickAndMsg :: Show NickAndMsg where show = genericShow
@@ -89,10 +88,10 @@ channelName = WS._Channel
 activeChannel :: Lens' Model (Maybe WS.Channel)
 activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
 
-channelMessages :: Lens' Model (M.Map WS.Channel (L.CatList NickAndMsg))
+channelMessages :: Lens' Model (M.Map WS.Channel (M.Map String NickAndMsg))
 channelMessages = _Newtype <<< prop (SProxy :: SProxy "channelMessages")
 
-messages :: Lens' Model (L.CatList String)
+messages :: Lens' Model (M.Map String String)
 messages = _Newtype <<< prop (SProxy :: SProxy "messages")
 
 activeRequests :: Lens' Model (S.Set WS.RequestID)

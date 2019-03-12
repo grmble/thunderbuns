@@ -26,6 +26,9 @@ import Network.Wai.Application.Static
   )
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.WebSockets (websocketsOr)
+import Network.Wai.Middleware.Approot (fromRequest)
+import Network.Wai.Middleware.HttpAuth (basicAuth)
+import Network.Wai.UrlMap (mapUrls, mount)
 import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
 import System.Log.Bunyan (withLogWriter)
 import qualified System.Log.Bunyan as Bunyan
@@ -35,6 +38,7 @@ import System.Log.Bunyan.RIO
 import System.Log.Bunyan.Types (textToPriority)
 import qualified Thunderbuns.Config as C
 import qualified Thunderbuns.Irc.Client as I
+import qualified Thunderbuns.Irc.Config as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Types as I
 import Thunderbuns.Persist
@@ -43,8 +47,8 @@ import qualified Thunderbuns.WS.Handler as W
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (MonadUnliftIO, liftIO)
 import UnliftIO.Async (Async, async, cancel, concurrently)
-import UnliftIO.Exception (SomeException, bracket, finally)
-import UnliftIO.MVar (newEmptyMVar, putMVar)
+import UnliftIO.Exception (SomeException, bracket, catch, finally)
+import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import UnliftIO.STM
 import WaiAppStatic.Types (toPiece)
 
@@ -88,7 +92,7 @@ runMain = do
       (const $
        void $
        concurrently
-         (runWebServer ircConn wsChan)
+         (runWebServer (C._envDBPool env) ircConn wsChan)
          (atomically (dupTChan (I.fromServer conn)) >>=
           queueMessagesForWSClients (C._envDBPool env) wsChan))
 
@@ -102,8 +106,11 @@ queueMessagesForWSClients pool dst src =
   withNamedLogger
     "thunderbuns.persist"
     id
-    (go `finally` logDebug "queueMessagesForWSClients:  terminating")
+    (go `catch` rego `finally`
+     logDebug "queueMessagesForWSClients:  terminating")
   where
+    rego e =
+      logRecord INFO (someException e) "Caught exception, restarting" >> go
     go =
       forever $ do
         msg <- atomically $ readTChan src
@@ -119,28 +126,34 @@ logAndCancel msg a = do
 
 runWebServer ::
      (C.HasHttpConfig r, Bunyan r m, MonadUnliftIO m)
-  => I.Connection
+  => Pool SqlBackend
+  -> I.Connection
   -> TChan W.Response
   -> m ()
-runWebServer irccon responseChan =
+runWebServer pool irccon responseChan =
   withNamedLogger "thunderbuns.http" id $ do
+    closeAction <- newEmptyMVar
     cfg <- asks (view C.httpConfig)
     let dir = T.unpack $ C.staticDir cfg
+    let root = C.rootPrefix cfg
     let port = C.port cfg
     logInfo (T.pack $ "Serving HTTP on port " <> show port)
     lg <- asks (view logger)
     liftIO
       (runSettings
-         (mySettings port lg defaultSettings)
-         (mainApplication dir irccon responseChan lg)) `finally`
+         (mySettings closeAction port lg defaultSettings)
+         (mainApplication root dir pool irccon responseChan lg)) `finally` do
       logInfo (T.pack $ "Stopping HTTP on port " <> show port)
+      action <- takeMVar closeAction
+      liftIO action
   where
-    mySettings :: Integer -> Logger -> Settings -> Settings
-    mySettings port lg =
+    mySettings :: MVar (IO ()) -> Integer -> Logger -> Settings -> Settings
+    mySettings closeAction port lg =
       setPort (fromIntegral port) >>>
-      setGracefulShutdownTimeout (Just 5) >>> setOnException (onException lg)
-      -- >>> setInstallShutdownHandler shutdownHandler
-    -- posix stuff no windows
+      setGracefulShutdownTimeout (Just 1) >>>
+      setOnException (onException lg) >>>
+      setInstallShutdownHandler
+        (putMVar closeAction)
     -- shutdownHandler closeSocket =
     --  void $ installHandler sigTERM (CatchOnce $ closeSocket) Nothing
     onException :: Logger -> Maybe Request -> SomeException -> IO ()
@@ -149,20 +162,28 @@ runWebServer irccon responseChan =
      = Bunyan.logRecord DEBUG (someException ex) "WARP exception handler" lg
 
 mainApplication ::
-     FilePath -> I.Connection -> TChan W.Response -> Logger -> Application
-mainApplication fp irccon responseChan = logResponseTime serve
+     Text -> FilePath -> Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> Application
+mainApplication root fp pool irccon responseChan = logResponseTime serve
   where
     serve :: Logger -> Application
     serve lg =
+      basicAuth
+        (\u p -> pure $ toText u == authUser && toText p == authPass)
+        "Thunderbuns" $
+      fromRequest $
+      mapUrls $
+      mount root $
       websocketsOr
         defaultConnectionOptions
-        (wsApplication irccon responseChan lg)
+        (wsApplication pool irccon responseChan lg)
         (staticApp settings)
     settings =
       (defaultWebAppSettings fp) {ssIndices = [fromJust $ toPiece "index.html"]}
+    authUser = I.nick $ I.server irccon
+    authPass = I.nicksrvPassword $ I.server irccon
 
-wsApplication :: I.Connection -> TChan W.Response -> Logger -> ServerApp
-wsApplication irccon responseChan lgX pending =
+wsApplication :: Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> ServerApp
+wsApplication pool irccon responseChan lgX pending =
   flip (Bunyan.withNamedLogger "thunderbuns.ws" id) lgX $ \lg -> do
     gc <- acceptRequest pending >>= W.guardedConnection
     runReaderT
@@ -171,7 +192,7 @@ wsApplication irccon responseChan lgX pending =
     bracket
       (startThreads gc lg)
       (stopThreads lg)
-      (const $ runReaderT (W.handleConn irccon gc) lg)
+      (const $ runReaderT (W.handleConn pool irccon gc) lg)
   where
     startThreads :: W.GuardedConnection -> Logger -> IO (Async (), Async ())
     startThreads gc lg = do

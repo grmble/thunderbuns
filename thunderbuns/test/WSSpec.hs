@@ -24,13 +24,16 @@ spec = do
       classify (example {msgArgs = ["#haskell,#scala", "hi"]}) `shouldSatisfy`
       isChannelMessage
     it "from servername -> generic" $
-      classify (example {msgPrefix = "the.server.name"}) `shouldNotSatisfy`
+      classify (example {msgPrefix = Just "the.server.name"}) `shouldNotSatisfy`
       isChannelMessage
     it "some other command -> generic" $
       classify (example {msgCmd = Cmd "LIST"}) `shouldNotSatisfy`
       isChannelMessage
     it "numeric code -> generic" $
       classify (example {msgCmd = Response (NumericCode 101)}) `shouldNotSatisfy`
+      isChannelMessage
+    it "message without prefix" $
+      classify (example {msgPrefix = Nothing}) `shouldNotSatisfy`
       isChannelMessage
     it "channel does not start with &#+!" $
       classify (example {msgArgs = ["yourNick", "a private msg"]}) `shouldNotSatisfy`
@@ -56,7 +59,7 @@ spec = do
           From {nick = Nick "nick", user = "username", host = "the.hostname"}
     it "from is correctly stringified" $
       let ChannelMessage {from} = classify example
-       in fromToText from `shouldBe` toText (msgPrefix example)
+       in fromToText <$> Just from `shouldBe` toText <$> msgPrefix example
 
 classify :: Message -> Response
 classify = responseFromMessage (OrderedUUID "fakeit")
@@ -64,7 +67,7 @@ classify = responseFromMessage (OrderedUUID "fakeit")
 example :: Message
 example =
   Message
-    { msgPrefix = "nick!username@the.hostname"
+    { msgPrefix = Just "nick!username@the.hostname"
     , msgCmd = Cmd "PRIVMSG"
     , msgArgs = ["#haskell", "hello", "ladies", "and gentlemen"]
     }

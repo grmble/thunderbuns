@@ -10,11 +10,10 @@ import Bonsai.Types (delayUntilRendered)
 import Control.Monad.State (State, runState)
 import Control.Monad.Writer (WriterT, execWriterT, tell)
 import Control.Plus (empty)
-import Data.CatList as L
 import Data.Foldable (for_)
 import Data.Lens (assign, modifying, over, set, use)
 import Data.Map as M
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Set as S
 import Data.Tuple (Tuple(..))
 import Effect.Class (liftEffect)
@@ -38,9 +37,13 @@ update (WebSocketMsg x) = runM $ updateWebSocket x
 update (MessageInputMsg x) = Tuple empty <<< set inputModel x
 update (LoginFormMsg x) = Tuple empty <<< over loginFormModel (updatePlain x)
 update (CurrentViewMsg x) = Tuple empty <<< set currentView x
-update (ActiveChannelMsg x) = runM $ do
+update (ActiveChannelMsg x) =
+  runM $ do
   modifying activeChannel (\current -> if current == x then Nothing else x)
   scrollMessages
+  ws <- use webSocket
+  for_ (Tuple <$> ws <*> x) $ \(Tuple ws' chan) ->
+    sendRequest ws' (WS.GetChannelMessages {channel: chan, before: Nothing})
 update (RequestMsg x) = runM $ updateRequest x
 update (ResponseMsg x) = runM $ updateResponse x
 
@@ -73,14 +76,15 @@ updateResponse (WS.DecodeError {errorMsg}) = do
    -- so we reset them all
    assign activeRequests S.empty
    error errorMsg "Error from Backend"
-updateResponse (WS.GenericMessage {msg}) = do
-  modifying messages (flip L.snoc msg)
+updateResponse (WS.GenericMessage {uuid, msg}) = do
+  modifying messages (M.insert uuid msg)
   scrollMessagesIfAtEnd
-updateResponse (WS.ChannelMessage {from, cmd, channels, msg}) = do
+updateResponse (WS.ChannelMessage {uuid, from, cmd, channels, msg}) = do
   let WS.From {nick} = from
   for_ channels $ \channel -> do
-    let nm = NickAndMsg { nick, msg }
-    modifying channelMessages (M.insertWith (<>) channel (L.singleton nm))
+    let nm = NickAndMsg { uuid, nick, msg }
+    modifying (channelMessages) $ \cm ->
+      M.alter (\mm -> Just (maybe (M.singleton uuid nm) (M.insert uuid nm) mm)) channel cm
   scrollMessagesIfAtEnd
 
 markDone :: WS.RequestID -> M Unit

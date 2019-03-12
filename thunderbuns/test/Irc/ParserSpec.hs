@@ -28,15 +28,15 @@ spec = do
       parseOnly
         (parseMessage <* endOfInput)
         ":nick!user@host PRIVMSG #world :hello\r\n" `shouldBe`
-      Right (Message "nick!user@host" (Cmd "PRIVMSG") ["#world", "hello"])
+      Right (Message (Just "nick!user@host") (Cmd "PRIVMSG") ["#world", "hello"])
     it "PRIVMSG without CRLF" $
       parseOnly
         (parseMessage <* endOfInput)
         ":nick!user@host PRIVMSG #world :hello" `shouldSatisfy`
       leftInfixOf "Must be terminated by CRLF"
-    it "Message must have prefix" $
-      parseOnly (parseMessage <* endOfInput) "PRIVMSG #world :hello" `shouldSatisfy`
-      leftInfixOf "Mandatory prefix"
+    it "Message prefix is optional" $
+      parseOnly (parseMessage <* endOfInput) "PRIVMSG #world :hello\r\n" `shouldBe`
+      Right (Message Nothing (Cmd "PRIVMSG") ["#world", "hello"])
   where
     leftInfixOf :: String -> Either String a -> Bool
     leftInfixOf s = either (isInfixOf s) (const False)

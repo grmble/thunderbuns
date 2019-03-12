@@ -71,7 +71,7 @@ data Cmd
 -- If we generate a message to simulate a server response,
 -- it has one as well.
 data Message = Message
-  { msgPrefix :: !ByteString
+  { msgPrefix :: !(Maybe ByteString)
   , msgCmd :: !Cmd
   , msgArgs :: ![ByteString]
   } deriving (Eq, Ord, Show)

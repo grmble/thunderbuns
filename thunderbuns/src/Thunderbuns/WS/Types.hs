@@ -9,6 +9,7 @@ module Thunderbuns.WS.Types where
 
 import qualified Data.Aeson as A
 import Data.Aeson.Types
+import qualified Data.Attoparsec.Text as Atto
 import Data.ByteString.D64.UUID (OrderedUUID)
 import Data.Coerce (coerce)
 import Data.Hashable (Hashable)
@@ -36,10 +37,8 @@ instance A.FromJSON RequestWithID
 -- more documentation for aeson.
 data Request
   = GenericCommand { cmd :: !Text }
-  | ChannelCommand { nick :: !Nick
-                   , cmd :: !Text
-                   , channel :: !Channel
-                   , msg :: !Text }
+  | GetChannelMessages { channel :: !Channel
+                       , before :: !(Maybe OrderedUUID) }
   deriving (Eq, Generic, Show)
 
 instance A.FromJSON Request where
@@ -49,9 +48,8 @@ instance A.FromJSON Request where
       c <- o .: "contents"
       case (tag :: Text) of
         "GenericCommand" -> GenericCommand <$> c .: "cmd"
-        "ChannelCommand" ->
-          ChannelCommand <$> c .: "nick" <*> c .: "cmd" <*> c .: "channel" <*>
-          c .: "msg"
+        "GetChannelMessages" ->
+          GetChannelMessages <$> c .: "channel" <*> c .:? "before"
         _ -> fail ("Unknown Request constructor: " <> T.unpack tag)
 
 -- | The response payload
@@ -103,13 +101,20 @@ instance A.ToJSON Response where
       ]
   toJSON GenericMessage {..} =
     object
-      ["tag" .= ("GenericMessage" :: Text), "contents" .= object ["msg" .= msg]]
+      [ "tag" .= ("GenericMessage" :: Text)
+      , "contents" .= object ["uuid" .= uuid, "msg" .= msg]
+      ]
   toJSON ChannelMessage {..} =
     object
       [ "tag" .= ("ChannelMessage" :: Text)
       , "contents" .=
         object
-          ["from" .= from, "cmd" .= cmd, "channels" .= channels, "msg" .= msg]
+          [ "uuid" .= uuid
+          , "from" .= from
+          , "cmd" .= cmd
+          , "channels" .= channels
+          , "msg" .= msg
+          ]
       ]
 
 -- | A request id identifies a request on a websocket
@@ -149,6 +154,16 @@ instance A.ToJSON From
 
 fromToText :: From -> Text
 fromToText From {nick, user, host} = coerce nick <> "!" <> user <> "@" <> host
+
+parseFrom :: Atto.Parser From
+parseFrom =
+  From <$> (Nick <$> Atto.takeWhile1 (/= '!') <* Atto.string "!") <*>
+  (Atto.takeWhile1 (/= '@') <* Atto.string "@") <*>
+  Atto.takeWhile1 (const True)
+
+runParseFrom :: Text -> Maybe From
+runParseFrom =
+  either (const Nothing) Just . Atto.parseOnly (parseFrom <* Atto.endOfInput)
 
 -- | A nick represents an IRC User
 newtype Nick =

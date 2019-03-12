@@ -33,6 +33,7 @@ instance Interpret LogConfig
 -- | HTTP Config
 data HttpConfig = HttpConfig
   { port :: !Integer
+  , rootPrefix :: !Text
   , staticDir :: !Text
   } deriving (Show, Eq, Generic)
 

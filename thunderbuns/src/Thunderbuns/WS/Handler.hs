@@ -5,13 +5,14 @@ module Thunderbuns.WS.Handler where
 import Control.Monad.Except
 import qualified Data.Aeson as A
 import Data.Attoparsec.ByteString (endOfInput, parseOnly)
-import qualified Data.Attoparsec.Text as Atto
 import qualified Data.ByteString as B
 import Data.ByteString.D64.UUID (OrderedUUID, orderedUUID)
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Pool (Pool)
 import qualified Data.Text.Encoding as T
 import Data.UUID.V1 (nextUUID)
+import Database.Persist.Sqlite (SqlBackend)
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO (Bunyan, logDebug, logTrace)
@@ -19,6 +20,7 @@ import qualified Thunderbuns.Irc.Config as I
 import qualified Thunderbuns.Irc.Connection as I
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
+import Thunderbuns.Persist (runSelectChannelBefore)
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (MonadUnliftIO(..))
@@ -48,10 +50,11 @@ type EIO = ExceptT (Maybe W.RequestID, Text)
 
 handleConn ::
      forall r m. (Bunyan r m, MonadUnliftIO m)
-  => I.Connection
+  => Pool SqlBackend
+  -> I.Connection
   -> GuardedConnection
   -> m ()
-handleConn irc gc@GuardedConnection {conn} =
+handleConn pool irc gc@GuardedConnection {conn} =
   forever $ do
     bs <- liftIO $ receiveData conn
     logDebug ("Received: " <> toText bs)
@@ -63,7 +66,7 @@ handleConn irc gc@GuardedConnection {conn} =
     handleBytes :: L.ByteString -> EIO m W.Response
     handleBytes bs = do
       W.RequestWithID {rqid, rq} <- decodeData bs
-      handleRequest irc rqid rq
+      handleRequest pool irc gc rqid rq
     -- decode the json from the payload
     decodeData :: L.ByteString -> EIO m W.RequestWithID
     decodeData bs =
@@ -83,18 +86,23 @@ stringError rqid msg err = (rqid, msg <> toText err)
 -- | handle a valid request
 handleRequest ::
      forall m. MonadUnliftIO m
-  => I.Connection
+  => Pool SqlBackend
+  -> I.Connection
+  -> GuardedConnection
   -> W.RequestID
   -> W.Request
   -> EIO m W.Response
-handleRequest irc rqid = go
+handleRequest pool irc gc rqid = go
   where
     go :: W.Request -> EIO m W.Response
     go (W.GenericCommand cmd) = do
       cmd' <- parseCommand cmd
       sendCommand cmd'
       pure $ W.Done rqid
-    go W.ChannelCommand {} = throwError (Just rqid, "IMPLEMENT ChannelCommand")
+    go W.GetChannelMessages {channel, before} = do
+      msgs <- liftIO $ runSelectChannelBefore channel before pool
+      for_ msgs (liftIO . sendGuardedTextData gc . A.encode)
+      pure $ W.Done rqid
     parseCommand :: Text -> EIO m I.Command
     parseCommand cmd = do
       let bs = T.encodeUtf8 cmd
@@ -135,7 +143,7 @@ makeResponse msg = do
 responseFromMessage :: OrderedUUID -> I.Message -> W.Response
 responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
   fromMaybe (W.GenericMessage uuid (toText $ I.ircLine m)) $ do
-    from <- parseFrom' (toText msgPrefix)
+    from <- maybe Nothing W.runParseFrom (toText <$> msgPrefix)
     cmd <-
       case msgCmd of
         I.Cmd x@"PRIVMSG" -> Just $ toText x
@@ -145,9 +153,6 @@ responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
     let msg = toText $ B.intercalate " " $ tail msgArgs
     pure W.ChannelMessage {uuid, from, channels, cmd, msg}
   where
-    parseFrom' :: Text -> Maybe W.From
-    parseFrom' prefix =
-      either (const Nothing) Just (Atto.parseOnly parseFrom prefix)
     validChannelName :: B.ByteString -> Bool
     validChannelName bs = B.head bs `B.elem` "#&+!"
     validChannels :: Maybe [W.Channel]
@@ -156,9 +161,3 @@ responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
            filter validChannelName (B.split (I.c2w ',') (head msgArgs)) of
         [] -> Nothing
         x -> Just x
-
-parseFrom :: Atto.Parser W.From
-parseFrom =
-  W.From <$> (W.Nick <$> Atto.takeWhile1 (/= '!') <* Atto.string "!") <*>
-  (Atto.takeWhile1 (/= '@') <* Atto.string "@") <*>
-  Atto.takeWhile1 (const True)
