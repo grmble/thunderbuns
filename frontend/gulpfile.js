@@ -3,6 +3,7 @@ const purescript = require('gulp-purescript');
 const del = require('del');
 const run = require('gulp-run');
 const browserSync = require('browser-sync').create();
+const gzip = require('gulp-gzip');
 
 const staticDir = 'dist/';
 
@@ -15,7 +16,6 @@ const sources = [
 const distFiles = [
   'index.html',
   '*.css',
-  'bower_components/event-source-polyfill/src/eventsource.min.js',
   'bower_components/toastr/toastr.min.css',
   'bower_components/toastr/toastr.min.js',
   'bower_components/jquery/dist/jquery.min.js',
@@ -57,12 +57,19 @@ function test () {
 exports.test = gulp.series(compile, test);
 exports.test.description = 'Run the purescript tests.';
 
-function dist () {
-  return gulp.src(distFiles)
+function gzipApp () {
+  return gulp.src(staticDir + 'app.js')
+    .pipe(gzip())
     .pipe(gulp.dest(staticDir));
 }
 
-exports.default = gulp.parallel(gulp.series(compile, bundle), dist);
+function dist () {
+  return gulp.src(distFiles)
+    .pipe(gzip())
+    .pipe(gulp.dest(staticDir));
+}
+
+exports.default = gulp.parallel(gulp.series(compile, bundle, gzipApp), dist);
 exports.default.description = 'Compile and copy to server directory.';
 
 function watchPurescript () {

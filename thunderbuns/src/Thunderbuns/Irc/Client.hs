@@ -22,7 +22,7 @@ import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
-import UnliftIO.Async (Concurrently(..), concurrently, runConcurrently)
+import UnliftIO.Async (race_)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (SomeException, bracket, catch, finally, throwString)
 import UnliftIO.STM
@@ -82,14 +82,12 @@ runIrcClient registrator conn =
         (connectWithTimeout (T.unpack host) (fromIntegral port) tls)
         (liftIO . C.connectionClose) $ \client -> do
         rgchan <- atomically $ dupTChan (fromServer conn)
-        runConcurrently $
-          (\_ _ _ -> ()) <$>
-          (Concurrently $
-           srvlog "thunderbuns.irc.fromServer" $ runFromServer client) <*>
-          (Concurrently $ srvlog "thunderbuns.irc.toServer" $ runToServer client) <*>
-          (Concurrently $
-           srvlog "thunderbuns.irc.registrator" $
-           registrator rgchan (toServer conn))
+        race_
+          (srvlog "thunderbuns.irc.fromServer" $ runFromServer client)
+          (race_
+             (srvlog "thunderbuns.irc.toServer" $ runToServer client)
+             (srvlog "thunderbuns.irc.registrator" $
+              registrator rgchan (toServer conn)))
     -- connect within timeout or exception
     connectWithTimeout host port tls =
       fromJust <$> timeout clientTimeout (connect host port tls)
@@ -102,6 +100,9 @@ runIrcClient registrator conn =
       withNamedLogger n (M.insert "server" (A.String $ IC.host $ server conn))
     --
     -- read from the server and broadcast the parsed messages
+    --
+    -- i am not sure why, but this seems to hang and not react
+    -- to async signals when interrupting - all the other treads go down
     runFromServer :: C.Connection -> m ()
     runFromServer client =
       forever
@@ -126,8 +127,10 @@ runIrcClient registrator conn =
       forever
         (do cmd <- atomically $ readTBQueue (toServer conn)
             logDebug (toText $ ircCmdLine cmd)
-            liftIO $ C.connectionPut client (ircCmdLine cmd)) `finally`
+            liftIO $ C.connectionPut client (ircCmdLine cmd)) `finally` do
       logDebug "Thread writing to IRC server terminated."
+      logDebug "HACK: close the socket to f*ck with the reading thread"
+      liftIO $ C.connectionClose client
 
 -- | Fake http client, not aware of virtual servers
 --
@@ -137,7 +140,7 @@ runIrcClient registrator conn =
 -- url should contain a path like /, and be url encoded
 -- if it contains spaces or other funny characters.
 fakeHttpClient :: B.ByteString -> C.Connection -> IO ()
-fakeHttpClient path conn = concurrently fromServer toServer $> ()
+fakeHttpClient path conn = race_ fromServer toServer
   where
     fromServer =
       forever $ do
@@ -162,7 +165,7 @@ chomp bs =
         else nocr
 
 ircStdinClient :: C.Connection -> IO ()
-ircStdinClient conn = concurrently fromServer toServerInteractive $> ()
+ircStdinClient conn = race_ fromServer toServerInteractive
   where
     fromServer =
       forever $ do

@@ -47,8 +47,8 @@ import Thunderbuns.Persist
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Handler as W
 import qualified Thunderbuns.WS.Types as W
-import UnliftIO (MonadUnliftIO, liftIO)
-import UnliftIO.Async (Async, async, cancel, concurrently)
+import UnliftIO (MonadUnliftIO, liftIO, timeout)
+import UnliftIO.Async (Async, async, cancel, race)
 import UnliftIO.Exception (SomeException, bracket, catch, finally)
 import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import UnliftIO.STM
@@ -93,7 +93,7 @@ runMain = do
       (logAndCancel "Canceling IRC Connection")
       (const $
        void $
-       concurrently
+       race
          (runWebServer (C._envDBPool env) ircConn wsChan)
          (atomically (dupTChan (I.fromServer conn)) >>=
           queueMessagesForWSClients (C._envDBPool env) wsChan))
@@ -144,8 +144,8 @@ runWebServer pool irccon responseChan =
          (mySettings closeAction (fromIntegral port) lg defaultSettings)
          (mainApplication cfg pool irccon responseChan lg)) `finally` do
       logInfo (T.pack $ "Stopping HTTP on port " <> show port)
-      action <- takeMVar closeAction
-      liftIO action
+      action <- timeout 50000 $ takeMVar closeAction
+      maybe (pure ()) liftIO action
   where
     mySettings :: MVar (IO ()) -> Integer -> Logger -> Settings -> Settings
     mySettings closeAction port lg =

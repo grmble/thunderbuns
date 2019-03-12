@@ -38,12 +38,18 @@ registerConnection conn msgChan cmdQueue = do
   atomically $ writeTBQueue cmdQueue (Command "USER" [n, "0", "*", fn])
   msg <- atomically $ readTChan msgChan
   case msgCmd msg of
-    Response RplWelcome ->
-      atomically $ do
+    Response RplWelcome -> do
+      -- XXX
+      -- how we should do this:
+      -- drain queue with 10-15 seconds timeout, see if it has 001 message (welcome)
+      -- if good, continue, otherwise terminate
+      --
+      -- anyway, posting 2 messages in 1 transaction to a bounded queue seems to hang ...
+      -- who woulda thunk
       for_ (nicksrvPassword $ server conn) $ \p ->
-        writeTBQueue cmdQueue (Command "PRIVMSG" ["NickServ", "IDENTIFY", T.encodeUtf8 p])
+         atomically (writeTBQueue cmdQueue (Command "PRIVMSG" ["NickServ", "IDENTIFY " <> T.encodeUtf8 p]))
       for_ (channels $ server conn) $ \cn ->
-        writeTBQueue cmdQueue (Command "JOIN" [T.encodeUtf8 cn])
+         atomically (writeTBQueue cmdQueue (Command "JOIN" [T.encodeUtf8 cn]))
     _ ->
       throwString
         ("Unexpected message, waiting for 001, got: " <> show (ircLine msg))
@@ -102,4 +108,4 @@ fakeMessage conn cmd =
 fakePrefix :: Connection -> ByteString
 fakePrefix conn =
   let n = T.encodeUtf8 $ nick (server conn)
-    in n <> "!" <> n <> "@localhost"
+   in n <> "!" <> n <> "@localhost"
