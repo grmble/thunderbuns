@@ -3,17 +3,17 @@
 
 module Thunderbuns.Config where
 
-import Data.Pool (Pool)
 import Control.Lens (lens)
 import Control.Lens.TH (makeClassy)
 import qualified Data.Aeson as A
+import Data.Pool (Pool)
+import Database.Persist.Sqlite (SqlBackend)
 import Dhall (Interpret)
 import System.Log.Bunyan.RIO (HasLogger(..), Logger)
 import qualified Thunderbuns.Irc.Config as IC
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import Thunderbuns.WS.Types
-import Database.Persist.Sqlite (SqlBackend)
 import UnliftIO.MVar
 import UnliftIO.STM
 
@@ -32,9 +32,10 @@ instance Interpret LogConfig
 
 -- | HTTP Config
 data HttpConfig = HttpConfig
-  { port :: !Integer
+  { port :: !Natural
   , rootPrefix :: !Text
   , staticDir :: !Text
+  , appRoot :: !(Maybe Text)
   } deriving (Show, Eq, Generic)
 
 $(makeClassy ''HttpConfig)
@@ -44,8 +45,8 @@ instance Interpret HttpConfig
 -- | DB Config
 data DatabaseConfig = DatabaseConfig
   { connectionURL :: !Text
-  , poolSize :: Integer
-  , runMigrations :: Bool
+  , poolSize :: !Natural
+  , runMigrations :: !Bool
   } deriving (Show, Eq, Generic)
 
 $(makeClassy ''DatabaseConfig)

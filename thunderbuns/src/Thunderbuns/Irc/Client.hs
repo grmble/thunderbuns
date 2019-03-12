@@ -79,7 +79,7 @@ runIrcClient registrator conn =
       logDebug "establishing connection to irc server"
       let IC.ServerConfig {IC.host, IC.port, IC.tls} = server conn
       bracket
-        (connectWithTimeout (T.unpack host) port tls)
+        (connectWithTimeout (T.unpack host) (fromIntegral port) tls)
         (liftIO . C.connectionClose) $ \client -> do
         rgchan <- atomically $ dupTChan (fromServer conn)
         runConcurrently $

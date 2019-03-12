@@ -7,15 +7,15 @@ import qualified Data.Text.Encoding as T
 import Dhall (Interpret)
 import Thunderbuns.Tlude
 
--- ! Server Configuration
+-- ! Irc Server Configuration
 data ServerConfig = ServerConfig
   { host :: !Text
-  , port :: !Integer
+  , port :: !Natural
   , tls :: !Bool
-  , serverPassword :: !Text
+  , serverPassword :: !(Maybe Text)
   , nick :: !Text
   , fullname :: !Text
-  , nicksrvPassword :: !Text
+  , nicksrvPassword :: !(Maybe Text)
   , channels :: ![Text]
   } deriving (Generic, Eq, Show)
 

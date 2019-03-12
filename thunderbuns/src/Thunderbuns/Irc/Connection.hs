@@ -2,7 +2,6 @@
 
 module Thunderbuns.Irc.Connection where
 
-import qualified Data.ByteString as B
 import qualified Data.Text.Encoding as T
 import System.Log.Bunyan.RIO (Bunyan, logDebug)
 import Thunderbuns.Irc.Config
@@ -33,14 +32,16 @@ registerConnection conn msgChan cmdQueue = do
   let ServerConfig {nick, fullname, serverPassword} = server conn
   let n = T.encodeUtf8 nick
   let fn = T.encodeUtf8 fullname
-  let p = T.encodeUtf8 serverPassword
-  unless (B.null p) $ atomically $ writeTBQueue cmdQueue (Command "PASS" [p])
+  for_ (T.encodeUtf8 <$> serverPassword) $ \p ->
+    atomically $ writeTBQueue cmdQueue (Command "PASS" [p])
   atomically $ writeTBQueue cmdQueue (Command "NICK" [n])
   atomically $ writeTBQueue cmdQueue (Command "USER" [n, "0", "*", fn])
   msg <- atomically $ readTChan msgChan
   case msgCmd msg of
     Response RplWelcome ->
-      atomically $
+      atomically $ do
+      for_ (nicksrvPassword $ server conn) $ \p ->
+        writeTBQueue cmdQueue (Command "PRIVMSG" ["NickServ", "IDENTIFY", T.encodeUtf8 p])
       for_ (channels $ server conn) $ \cn ->
         writeTBQueue cmdQueue (Command "JOIN" [T.encodeUtf8 cn])
     _ ->

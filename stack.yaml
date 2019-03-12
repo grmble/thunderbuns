@@ -1,9 +1,11 @@
 # 8.2.2 is lts-11.22
+# resolver: lts-11.22
+#
 # 8.6.3 ghci hangs all the time on windows, wait for 8.6.4
 # resolver: lts-13.9
+#
 # 8.6.4 is in nightly-2019-03-08
-# resolver: nightly-2019-03-08
-resolver: lts-11.22
+resolver: nightly-2019-03-12
 
 packages:
 - thunderbuns

@@ -1,4 +1,4 @@
 { connectionURL : Text
-, poolSize: Integer
+, poolSize: Natural
 , runMigrations: Bool
 }

@@ -141,7 +141,7 @@ runWebServer pool irccon responseChan =
     lg <- asks (view logger)
     liftIO
       (runSettings
-         (mySettings closeAction port lg defaultSettings)
+         (mySettings closeAction (fromIntegral port) lg defaultSettings)
          (mainApplication root dir pool irccon responseChan lg)) `finally` do
       logInfo (T.pack $ "Stopping HTTP on port " <> show port)
       action <- takeMVar closeAction
@@ -168,7 +168,7 @@ mainApplication root fp pool irccon responseChan = logResponseTime serve
     serve :: Logger -> Application
     serve lg =
       basicAuth
-        (\u p -> pure $ toText u == authUser && toText p == authPass)
+        (\u p -> pure $ toText u == authUser && toText p == fromMaybe "" (nickPass <|> srvPass))
         "Thunderbuns" $
       fromRequest $
       mapUrls $
@@ -180,7 +180,8 @@ mainApplication root fp pool irccon responseChan = logResponseTime serve
     settings =
       (defaultWebAppSettings fp) {ssIndices = [fromJust $ toPiece "index.html"]}
     authUser = I.nick $ I.server irccon
-    authPass = I.nicksrvPassword $ I.server irccon
+    nickPass = I.nicksrvPassword $ I.server irccon
+    srvPass = I.serverPassword $ I.server irccon
 
 wsApplication :: Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> ServerApp
 wsApplication pool irccon responseChan lgX pending =

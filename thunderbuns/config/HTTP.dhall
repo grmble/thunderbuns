@@ -1,6 +1,7 @@
 -- http server settings
 --
-{ port: Integer
+{ port: Natural
 , rootPrefix: Text
 , staticDir: Text
+, appRoot: Optional Text
 }
