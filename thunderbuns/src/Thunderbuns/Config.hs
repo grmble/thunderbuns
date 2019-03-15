@@ -53,6 +53,7 @@ $(makeClassy ''DatabaseConfig)
 
 instance Interpret DatabaseConfig
 
+-- | All the configs - this is what is coming from Dhall
 data Config = Config
   { server :: !IC.ServerConfig
   , logging :: !LogConfig
@@ -64,12 +65,15 @@ $(makeClassy ''Config)
 
 instance Interpret Config
 
-newtype DatabasePool = DatabasePool (Pool SqlBackend)
+-- | Newtype for Pool SqlBackend, so we can generate the HasDatabasePool class
+newtype DatabasePool =
+  DatabasePool (Pool SqlBackend)
 
 $(makeClassy ''DatabasePool)
 
 $(makePrisms ''DatabasePool)
 
+-- | The Thunderbuns main environment
 data Env = Env
   { _envConfig :: Config
   , _envLogger :: !Logger
@@ -81,6 +85,11 @@ data Env = Env
 
 $(makeClassy ''Env)
 
+--
+--
+-- write all the instances!
+--
+--
 instance Show Env where
   show Env {_envConfig, _envLogger} =
     "{envConfig = " ++

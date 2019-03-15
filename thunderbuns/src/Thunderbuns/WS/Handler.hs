@@ -9,18 +9,16 @@ import qualified Data.ByteString as B
 import Data.ByteString.D64.UUID (OrderedUUID, orderedUUID)
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe (fromJust, fromMaybe)
-import Data.Pool (Pool)
 import qualified Data.Text.Encoding as T
 import Data.UUID.V1 (nextUUID)
-import Database.Persist.Sqlite (SqlBackend)
 import Network.WebSockets (Connection, receiveData, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO (Bunyan, logDebug, logTrace)
-import qualified Thunderbuns.Irc.Config as I
-import qualified Thunderbuns.Irc.Connection as I
+import Thunderbuns.Config (HasDatabasePool)
+import Thunderbuns.Irc.Api (HasIrcConnection, sendCommand)
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
-import Thunderbuns.Persist (runSelectChannelBefore)
+import Thunderbuns.Persist.Api (selectChannelBefore, withDatabasePool)
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (MonadUnliftIO(..))
@@ -49,12 +47,10 @@ sendGuardedPing GuardedConnection {conn, mvar} bs =
 type EIO = ExceptT (Maybe W.RequestID, Text)
 
 handleConn ::
-     forall r m. (Bunyan r m, MonadUnliftIO m)
-  => Pool SqlBackend
-  -> I.IrcConnection
-  -> GuardedConnection
+     forall r m. (HasDatabasePool r, HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
+  => GuardedConnection
   -> m ()
-handleConn pool irc gc@GuardedConnection {conn} =
+handleConn gc@GuardedConnection {conn} =
   forever $ do
     bs <- liftIO $ receiveData conn
     logDebug ("Received: " <> toText bs)
@@ -66,7 +62,7 @@ handleConn pool irc gc@GuardedConnection {conn} =
     handleBytes :: L.ByteString -> EIO m W.Response
     handleBytes bs = do
       W.RequestWithID {rqid, rq} <- decodeData bs
-      handleRequest pool irc gc rqid rq
+      handleRequest gc rqid rq
     -- decode the json from the payload
     decodeData :: L.ByteString -> EIO m W.RequestWithID
     decodeData bs =
@@ -85,22 +81,19 @@ stringError rqid msg err = (rqid, msg <> toText err)
 
 -- | handle a valid request
 handleRequest ::
-     forall m. MonadUnliftIO m
-  => Pool SqlBackend
-  -> I.IrcConnection
-  -> GuardedConnection
+     forall r m. (HasIrcConnection r, HasDatabasePool r, Bunyan r m, MonadUnliftIO m)
+  => GuardedConnection
   -> W.RequestID
   -> W.Request
   -> EIO m W.Response
-handleRequest pool irc gc rqid = go
+handleRequest gc rqid = go
   where
     go :: W.Request -> EIO m W.Response
     go (W.GenericCommand cmd) = do
-      cmd' <- parseCommand cmd
-      sendCommand cmd'
+      parseCommand cmd >>= sendCommand'
       pure $ W.Done rqid
     go W.GetChannelMessages {channel, before} = do
-      msgs <- liftIO $ runSelectChannelBefore channel before pool
+      msgs <- withDatabasePool (selectChannelBefore channel before)
       for_ msgs (liftIO . sendGuardedTextData gc . A.encode)
       pure $ W.Done rqid
     parseCommand :: Text -> EIO m I.Command
@@ -110,20 +103,16 @@ handleRequest pool irc gc rqid = go
         ExceptT (pure (parseOnly (I.parseCommand <* endOfInput) bs))
     --
     -- helper for sending commands
-    sendCommand :: I.Command -> EIO m ()
-    sendCommand cmd = do
-      b <- liftIO (runReaderT (I.sendCommand cmd) irc)
+    sendCommand' :: I.Command -> EIO m ()
+    sendCommand' cmd = do
+      b <- lift $ sendCommand cmd
       unless b $
         throwError (Just rqid, "Can not send IRC command, server not connected")
 
 -- | Send an IRC message over the websocket
 sendResponse ::
-     (Bunyan r m, MonadUnliftIO m)
-  => I.ServerConfig
-  -> GuardedConnection
-  -> W.Response
-  -> m ()
-sendResponse _ gc response = do
+     (Bunyan r m, MonadUnliftIO m) => GuardedConnection -> W.Response -> m ()
+sendResponse gc response = do
   logTrace ("subscription message to websocket: " <> toText (A.encode response))
   sendGuardedTextData gc (A.encode response)
 

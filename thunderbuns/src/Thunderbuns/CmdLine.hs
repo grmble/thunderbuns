@@ -8,7 +8,7 @@
 module Thunderbuns.CmdLine where
 
 import Control.Concurrent (threadDelay)
-import Control.Lens (over, view)
+import Control.Lens (view, set)
 import Control.Monad.Reader (ask, runReaderT)
 import qualified Data.Aeson as A
 import qualified Data.HashMap.Strict as M
@@ -46,13 +46,14 @@ import qualified Thunderbuns.Config as C
 import Thunderbuns.Irc.Api
 import qualified Thunderbuns.Irc.Config as I (ServerConfig(..))
 import qualified Thunderbuns.Irc.Types as I (IrcConnection(..))
-import Thunderbuns.Persist
+import Thunderbuns.Persist.Api (runCreateSqlitePool)
+import Thunderbuns.Persist.Main (queueMessagesForWSClients)
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Handler as W
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (timeout)
 import UnliftIO.Async (Async, async, cancel, race)
-import UnliftIO.Exception (SomeException, bracket, catch, finally)
+import UnliftIO.Exception (SomeException, bracket, finally)
 import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import UnliftIO.STM
 import WaiAppStatic.Types (toPiece)
@@ -66,14 +67,7 @@ initialEnv = do
   _envIrcConnection <- runReaderT newConnection _envConfig
   _envWSChan <- newBroadcastTChanIO
   let dbc = view C.databaseConfig _envConfig
-  _envDBPool <-
-    liftIO $
-    C.DatabasePool <$>
-    runCreateSqlitePool
-      (C.connectionURL dbc)
-      (fromIntegral $ C.poolSize dbc)
-      (C.runMigrations dbc)
-      _envLogger
+  _envDBPool <- runReaderT (runCreateSqlitePool dbc) _envLogger
   pure
     C.Env
       { C._envConfig
@@ -99,30 +93,7 @@ runMain = do
        void $
        race
          (runWebServer wsChan)
-         (dupMessageChan >>= queueMessagesForWSClients wsChan))
-
-queueMessagesForWSClients ::
-     (C.HasDatabasePool r, Bunyan r m, MonadUnliftIO m)
-  => TChan W.Response
-  -> TChan Message
-  -> m ()
-queueMessagesForWSClients dst src =
-  withNamedLogger
-    "thunderbuns.persist"
-    id
-    (go `catch` rego `finally`
-     logDebug "queueMessagesForWSClients:  terminating")
-  where
-    rego e =
-      logRecord INFO (someException e) "Caught exception, restarting" >> go
-    go =
-      forever $ do
-        msg <- atomically $ readTChan src
-        lg <- view logger
-        response <- W.makeResponse msg
-        pool <- view (C.databasePool . C._DatabasePool)
-        liftIO $ runInsertResponse lg response pool
-        atomically $ writeTChan dst response
+         (dupMessageChan >>= flip queueMessagesForWSClients wsChan))
 
 logAndCancel :: Bunyan r m => T.Text -> Async a -> m ()
 logAndCancel msg a = do
@@ -215,10 +186,8 @@ wsApplication responseChan env pending =
     bracket
       (startThreads gc lg)
       (stopThreads lg)
-      (const $ runReaderT (W.handleConn pool irccon gc) lg)
+      (const $ runReaderT (W.handleConn gc) (set logger lg env))
   where
-    pool = view (C.databasePool . C._DatabasePool) env
-    irccon = view ircConnection env
     startThreads :: W.GuardedConnection -> Logger -> IO (Async (), Async ())
     startThreads gc lg = do
       a1 <- async $ pingThread gc 0
@@ -240,7 +209,7 @@ wsApplication responseChan env pending =
     ircSubscription chan gc lg =
       forever $ do
         resp <- atomically $ readTChan chan
-        runReaderT (W.sendResponse (I.server irccon) gc resp) lg
+        runReaderT (W.sendResponse gc resp) lg
 
 --
 --
@@ -260,7 +229,7 @@ logResponseTime = go
         "thunderbuns.http"
         (requestLoggingContext req)
         (Bunyan.logDuration' $ \cb lg -> do
-           let env' = over logger (const lg) env
+           let env' = set logger lg env
            app env' req $ \res -> do
              responded <- respond res
              cb (responseLoggingContext res M.empty)

@@ -1,40 +1,47 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Thunderbuns.Persist where
+module Thunderbuns.Persist.Api where
 
 import Control.Monad.Logger (runNoLoggingT)
-import Control.Monad.Reader
+import Control.Monad.Reader (ReaderT)
 import Data.ByteString.D64.UUID (OrderedUUID)
 import Data.Coerce (coerce)
-import Data.Pool (Pool, withResource)
+import Data.Pool (withResource)
 import Database.Persist
 import Database.Persist.Sqlite
-import System.Log.Bunyan
+import System.Log.Bunyan.RIO
+import qualified Thunderbuns.Config as C
 import Thunderbuns.Persist.Gen
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Types as W
+  ( Channel(..)
+  , Response(..)
+  , fromToText
+  , runParseFrom
+  )
 
 -- type MyBackend backend = (IsSqlBackend backend, PersistStoreWrite backend)
-runCreateSqlitePool :: Text -> Int -> Bool -> Logger -> IO (Pool SqlBackend)
-runCreateSqlitePool url size runmig lg = do
-  pool <- runNoLoggingT $ createSqlitePool url size
-  when runmig $ do
-    logInfo "running migrations" lg
-    withResource pool $ runReaderT (runMigration migrateAll)
-  pure pool
+-- NOT HasDatabaseConfig - Env is just being assembled when this is called
+runCreateSqlitePool :: Bunyan r m => C.DatabaseConfig -> m C.DatabasePool
+runCreateSqlitePool cfg = do
+  let C.DatabaseConfig {connectionURL, poolSize, runMigrations} = cfg
+  pool <-
+    liftIO $
+    runNoLoggingT $ createSqlitePool connectionURL (fromIntegral poolSize)
+  when runMigrations $ do
+    logInfo "running migrations"
+    liftIO $ withResource pool $ runReaderT (runMigration migrateAll)
+  pure (C.DatabasePool pool)
 
-runInsertResponse :: Logger -> W.Response -> Pool SqlBackend -> IO ()
-runInsertResponse lg response pool =
-  flip logDuration lg $
-  const $ withResource pool (runReaderT (insertResponse response))
+withDatabasePool ::
+     (C.HasDatabasePool r, Bunyan r m) => ReaderT SqlBackend IO a -> m a
+withDatabasePool persistAction =
+  logDuration $ do
+    pool <- view (C.databasePool . C._DatabasePool)
+    liftIO $ withResource pool (runReaderT persistAction)
 
 insertResponse :: W.Response -> ReaderT SqlBackend IO ()
 insertResponse resp = for_ (responseToMessage resp) (void . insert)
-
-runSelectChannelBefore ::
-     W.Channel -> Maybe OrderedUUID -> Pool SqlBackend -> IO [W.Response]
-runSelectChannelBefore channel before pool =
-  withResource pool $ runReaderT (selectChannelBefore channel before)
 
 selectChannelBefore ::
      W.Channel -> Maybe OrderedUUID -> ReaderT SqlBackend IO [W.Response]
