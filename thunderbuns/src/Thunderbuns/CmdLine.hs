@@ -8,15 +8,13 @@
 module Thunderbuns.CmdLine where
 
 import Control.Concurrent (threadDelay)
-import Control.Lens (view)
-import Control.Monad.Reader (asks, runReaderT)
+import Control.Lens (over, view)
+import Control.Monad.Reader (ask, runReaderT)
 import qualified Data.Aeson as A
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
-import Data.Pool (Pool)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import Database.Persist.Sqlite (SqlBackend)
 import Dhall (auto, input)
 import Network.HTTP.Types (Status(..))
 import Network.Wai (Application, Request(..), Response, responseStatus)
@@ -28,7 +26,13 @@ import Network.Wai.Application.Static
 import Network.Wai.Handler.Warp
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.Wai.Middleware.Approot (fromRequest, hardcoded)
-import Network.Wai.Middleware.Gzip (GzipSettings(..), GzipFiles(..), def, gzip, gzipFiles)
+import Network.Wai.Middleware.Gzip
+  ( GzipFiles(..)
+  , GzipSettings(..)
+  , def
+  , gzip
+  , gzipFiles
+  )
 import Network.Wai.Middleware.HttpAuth (basicAuth)
 import Network.Wai.UrlMap (mapUrls, mount)
 import Network.WebSockets (ServerApp, acceptRequest, defaultConnectionOptions)
@@ -39,15 +43,14 @@ import System.Log.Bunyan.LogText
 import System.Log.Bunyan.RIO
 import System.Log.Bunyan.Types (textToPriority)
 import qualified Thunderbuns.Config as C
-import qualified Thunderbuns.Irc.Client as I
-import qualified Thunderbuns.Irc.Config as I
-import qualified Thunderbuns.Irc.Connection as I
-import qualified Thunderbuns.Irc.Types as I
+import Thunderbuns.Irc.Api
+import qualified Thunderbuns.Irc.Config as I (ServerConfig(..))
+import qualified Thunderbuns.Irc.Types as I (IrcConnection(..))
 import Thunderbuns.Persist
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Handler as W
 import qualified Thunderbuns.WS.Types as W
-import UnliftIO (MonadUnliftIO, liftIO, timeout)
+import UnliftIO (timeout)
 import UnliftIO.Async (Async, async, cancel, race)
 import UnliftIO.Exception (SomeException, bracket, catch, finally)
 import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
@@ -56,14 +59,16 @@ import WaiAppStatic.Types (toPiece)
 
 initialEnv :: IO C.Env
 initialEnv = do
-  _envConfig <- input auto "./config.dhall"
+  _envConfig <- liftIO $ input auto "./config.dhall"
   _envLogQueue <- newEmptyMVar
   let pri = textToPriority (C.priority $ C.logging _envConfig)
   _envLogger <- rootLogger "thunderbuns.root" pri (putMVar _envLogQueue)
-  _envIrcConnection <- I.newConnection (C.server _envConfig)
+  _envIrcConnection <- runReaderT newConnection _envConfig
   _envWSChan <- newBroadcastTChanIO
   let dbc = view C.databaseConfig _envConfig
   _envDBPool <-
+    liftIO $
+    C.DatabasePool <$>
     runCreateSqlitePool
       (C.connectionURL dbc)
       (fromIntegral $ C.poolSize dbc)
@@ -82,29 +87,26 @@ initialEnv = do
 runMain :: IO ()
 runMain = do
   env <- initialEnv
-  let conn = view C.envIrcConnection env
   let logQueue = view C.envLogQueue env
   let wsChan = view C.envWSChan env
-  let ircConn = view C.envIrcConnection env
-  withLogWriter logQueue (C.filename $ view C.logConfig env) $
+  let lgCfg = view C.logConfig env
+  withLogWriter logQueue (C.filename lgCfg) $
     flip runReaderT env $
     bracket
-      (async $ I.runIrcClient (I.registerConnection conn) conn)
+      (async superviseIrcClient)
       (logAndCancel "Canceling IRC Connection")
       (const $
        void $
        race
-         (runWebServer (C._envDBPool env) ircConn wsChan)
-         (atomically (dupTChan (I.fromServer conn)) >>=
-          queueMessagesForWSClients (C._envDBPool env) wsChan))
+         (runWebServer wsChan)
+         (dupMessageChan >>= queueMessagesForWSClients wsChan))
 
 queueMessagesForWSClients ::
-     (Bunyan r m, MonadUnliftIO m)
-  => Pool SqlBackend
-  -> TChan W.Response
-  -> TChan I.Message
+     (C.HasDatabasePool r, Bunyan r m, MonadUnliftIO m)
+  => TChan W.Response
+  -> TChan Message
   -> m ()
-queueMessagesForWSClients pool dst src =
+queueMessagesForWSClients dst src =
   withNamedLogger
     "thunderbuns.persist"
     id
@@ -116,8 +118,9 @@ queueMessagesForWSClients pool dst src =
     go =
       forever $ do
         msg <- atomically $ readTChan src
-        lg <- asks (view logger)
+        lg <- view logger
         response <- W.makeResponse msg
+        pool <- view (C.databasePool . C._DatabasePool)
         liftIO $ runInsertResponse lg response pool
         atomically $ writeTChan dst response
 
@@ -127,22 +130,25 @@ logAndCancel msg a = do
   cancel a
 
 runWebServer ::
-     (C.HasHttpConfig r, Bunyan r m, MonadUnliftIO m)
-  => Pool SqlBackend
-  -> I.Connection
-  -> TChan W.Response
+     ( C.HasDatabasePool r
+     , HasIrcConnection r
+     , C.HasHttpConfig r
+     , Bunyan r m
+     , MonadUnliftIO m
+     )
+  => TChan W.Response
   -> m ()
-runWebServer pool irccon responseChan =
+runWebServer responseChan =
   withNamedLogger "thunderbuns.http" id $ do
     closeAction <- newEmptyMVar
-    cfg <- asks (view C.httpConfig)
+    cfg <- view C.httpConfig
     let port = C.port cfg
     logInfo (T.pack $ "Serving HTTP on port " <> show port)
-    lg <- asks (view logger)
+    env <- ask
     liftIO
       (runSettings
-         (mySettings closeAction (fromIntegral port) lg defaultSettings)
-         (mainApplication cfg pool irccon responseChan lg)) `finally` do
+         (mySettings closeAction (fromIntegral port) (view logger env) defaultSettings)
+         (mainApplication responseChan env)) `finally` do
       logInfo (T.pack $ "Stopping HTTP on port " <> show port)
       action <- timeout 50000 $ takeMVar closeAction
       maybe (pure ()) liftIO action
@@ -161,43 +167,47 @@ runWebServer pool irccon responseChan =
      = Bunyan.logRecord DEBUG (someException ex) "WARP exception handler" lg
 
 mainApplication ::
-     C.HttpConfig
-  -> Pool SqlBackend
-  -> I.Connection
-  -> TChan W.Response
-  -> Logger
+     forall r.
+     (C.HasHttpConfig r, C.HasDatabasePool r, HasIrcConnection r, HasLogger r)
+  => TChan W.Response
+  -> r
   -> Application
-mainApplication cfg pool irccon responseChan = logResponseTime serve
+mainApplication responseChan = logResponseTime serve
   where
-    serve :: Logger -> Application
-    serve lg =
+    serve :: r -> Application
+    serve env = do
+      let srv = I.server $ view ircConnection env
+      let cfg = view C.httpConfig env
+      let settings =
+            (defaultWebAppSettings (T.unpack $ C.staticDir cfg))
+              {ssIndices = [fromJust $ toPiece "index.html"]}
+      let authUser = I.nick srv
+      let nickPass = I.nicksrvPassword srv
+      let srvPass = I.serverPassword srv
+      let setAppRootOrGuess =
+            maybe fromRequest (hardcoded . T.encodeUtf8) (C.appRoot cfg)
       basicAuth
         (\u p ->
            pure $
            toText u == authUser &&
            toText p == fromMaybe "" (nickPass <|> srvPass))
         "Thunderbuns" $
-      gzip (def {gzipFiles = GzipPreCompressed GzipIgnore}) $
-      setAppRootOrGuess $
-      mapUrls $
-      mount (C.rootPrefix cfg) $
-      websocketsOr
-        defaultConnectionOptions
-        (wsApplication pool irccon responseChan lg)
-        (staticApp settings)
-    settings =
-      (defaultWebAppSettings (T.unpack $ C.staticDir cfg))
-        {ssIndices = [fromJust $ toPiece "index.html"]}
-    authUser = I.nick $ I.server irccon
-    nickPass = I.nicksrvPassword $ I.server irccon
-    srvPass = I.serverPassword $ I.server irccon
-    setAppRootOrGuess =
-      maybe fromRequest (hardcoded . T.encodeUtf8) (C.appRoot cfg)
+        gzip (def {gzipFiles = GzipPreCompressed GzipIgnore}) $
+        setAppRootOrGuess $
+        mapUrls $
+        mount (C.rootPrefix cfg) $
+        websocketsOr
+          defaultConnectionOptions
+          (wsApplication responseChan env)
+          (staticApp settings)
 
 wsApplication ::
-     Pool SqlBackend -> I.Connection -> TChan W.Response -> Logger -> ServerApp
-wsApplication pool irccon responseChan lgX pending =
-  flip (Bunyan.withNamedLogger "thunderbuns.ws" id) lgX $ \lg -> do
+     (C.HasDatabasePool r, HasIrcConnection r, HasLogger r)
+  => TChan W.Response
+  -> r
+  -> ServerApp
+wsApplication responseChan env pending =
+  flip (Bunyan.withNamedLogger "thunderbuns.ws" id) (view logger env) $ \lg -> do
     gc <- acceptRequest pending >>= W.guardedConnection
     runReaderT
       (logInfo "Connection accepted, starting ping/irc subscription threads")
@@ -207,6 +217,8 @@ wsApplication pool irccon responseChan lgX pending =
       (stopThreads lg)
       (const $ runReaderT (W.handleConn pool irccon gc) lg)
   where
+    pool = view (C.databasePool . C._DatabasePool) env
+    irccon = view ircConnection env
     startThreads :: W.GuardedConnection -> Logger -> IO (Async (), Async ())
     startThreads gc lg = do
       a1 <- async $ pingThread gc 0
@@ -235,20 +247,25 @@ wsApplication pool irccon responseChan lgX pending =
 -- System.Log.Bunyan.Wai
 --
 --
-logResponseTime :: (Logger -> Application) -> Logger -> Application
+logResponseTime ::
+     forall r. HasLogger r
+  => (r -> Application)
+  -> r
+  -> Application
 logResponseTime = go
   where
-    go :: (Logger -> Application) -> Logger -> Application
-    go app lg req respond =
+    go :: (r -> Application) -> r -> Application
+    go app env req respond =
       Bunyan.withNamedLogger
         "thunderbuns.http"
         (requestLoggingContext req)
-        (Bunyan.logDuration' $ \cb lg' ->
-           app lg' req $ \res -> do
+        (Bunyan.logDuration' $ \cb lg -> do
+           let env' = over logger (const lg) env
+           app env' req $ \res -> do
              responded <- respond res
              cb (responseLoggingContext res M.empty)
              pure responded)
-        lg
+        (view logger env)
 
 requestLoggingContext :: Request -> A.Object -> A.Object
 requestLoggingContext req =

@@ -51,7 +51,7 @@ type EIO = ExceptT (Maybe W.RequestID, Text)
 handleConn ::
      forall r m. (Bunyan r m, MonadUnliftIO m)
   => Pool SqlBackend
-  -> I.Connection
+  -> I.IrcConnection
   -> GuardedConnection
   -> m ()
 handleConn pool irc gc@GuardedConnection {conn} =
@@ -87,7 +87,7 @@ stringError rqid msg err = (rqid, msg <> toText err)
 handleRequest ::
      forall m. MonadUnliftIO m
   => Pool SqlBackend
-  -> I.Connection
+  -> I.IrcConnection
   -> GuardedConnection
   -> W.RequestID
   -> W.Request
@@ -112,7 +112,7 @@ handleRequest pool irc gc rqid = go
     -- helper for sending commands
     sendCommand :: I.Command -> EIO m ()
     sendCommand cmd = do
-      b <- liftIO (I.sendCommand irc cmd)
+      b <- liftIO (runReaderT (I.sendCommand cmd) irc)
       unless b $
         throwError (Just rqid, "Can not send IRC command, server not connected")
 

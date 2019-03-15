@@ -4,7 +4,7 @@
 module Thunderbuns.Config where
 
 import Control.Lens (lens)
-import Control.Lens.TH (makeClassy)
+import Control.Lens.TH (makeClassy, makePrisms)
 import qualified Data.Aeson as A
 import Data.Pool (Pool)
 import Database.Persist.Sqlite (SqlBackend)
@@ -64,13 +64,19 @@ $(makeClassy ''Config)
 
 instance Interpret Config
 
+newtype DatabasePool = DatabasePool (Pool SqlBackend)
+
+$(makeClassy ''DatabasePool)
+
+$(makePrisms ''DatabasePool)
+
 data Env = Env
   { _envConfig :: Config
   , _envLogger :: !Logger
-  , _envIrcConnection :: !Connection
+  , _envIrcConnection :: !IrcConnection
   , _envLogQueue :: !(MVar A.Object)
   , _envWSChan :: !(TChan Response)
-  , _envDBPool :: !(Pool SqlBackend)
+  , _envDBPool :: !DatabasePool
   }
 
 $(makeClassy ''Env)
@@ -107,3 +113,9 @@ instance HasDatabaseConfig Config where
 
 instance HasDatabaseConfig Env where
   databaseConfig = envConfig . databaseConfig
+
+instance HasDatabasePool Env where
+  databasePool = envDBPool
+
+instance HasIrcConnection Env where
+  ircConnection = envIrcConnection

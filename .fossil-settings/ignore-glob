@@ -18,4 +18,6 @@ frontend/dist
 frontend/node_modules
 frontend/output
 thunderbuns.sqlite
+thunderbuns/TAGS
+TODO.txt
 x.*

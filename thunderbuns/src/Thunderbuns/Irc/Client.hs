@@ -8,29 +8,23 @@ module Thunderbuns.Irc.Client where
 import qualified Data.Aeson as A
 import qualified Data.Attoparsec.ByteString as Atto
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as BC8
 import Data.Default (def)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import qualified Network.Connection as C
-import System.Log.Bunyan.Context (someException)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
 import qualified Thunderbuns.Irc.Config as IC
 import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
+import Thunderbuns.Utils (microSeconds)
 import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
 import UnliftIO.Async (race_)
-import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.Exception (SomeException, bracket, catch, finally, throwString)
+import UnliftIO.Exception (bracket, finally, throwString)
 import UnliftIO.STM
 import UnliftIO.Timeout (timeout)
-
--- default timeout for network operations in microseconds
-clientTimeout :: Int
-clientTimeout = 60 * 1000 * 1000
 
 -- | Connect to the host and port, optinally using tls
 connect :: MonadIO m => String -> Integer -> Bool -> m C.Connection
@@ -46,37 +40,27 @@ connect host port tls = do
           Nothing
   liftIO $ C.connectTo ctx params
 
+clientTimeout :: Int
+clientTimeout = microSeconds 60
+
 runIrcClient ::
-     forall r m. (Bunyan r m, MonadUnliftIO m)
+     forall r m. (HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
   => (TChan Message -> TBQueue Command -> m ())
-  -> Connection
   -> m ()
-runIrcClient registrator conn =
+runIrcClient registrator =
   withNamedLogger
     "thunderbuns.irc"
     id
-    (bracket (reserveConnection conn) (releaseConnection conn) handleConnection) `catch`
-  waitAndReconnect
-    --
-    -- reserve the connection and start the handling threads
-    --
-    -- handle the connection
-    -- reconnect after a delay
-    -- note: CTRL-C is UserInterrupt is asynchronous - unliftIO catch will not catch it
-  where
-    waitAndReconnect :: SomeException -> m ()
-    waitAndReconnect e = do
-      logRecord ERROR (someException e) "waitAndReconnect: handling exception"
-      threadDelay clientTimeout
-      logInfo "waitAndReconnect: attempting to reconnect ..."
-      runIrcClient registrator conn
+    (bracket reserveConnection releaseConnection handleConnection)
     --
     -- connection is reserved, handle it
+  where
     handleConnection :: Bool -> m ()
     handleConnection isReserved = do
       unless isReserved $
         throwString "can not reserve connection - not disconnected"
       logDebug "establishing connection to irc server"
+      conn <- view ircConnection
       let IC.ServerConfig {IC.host, IC.port, IC.tls} = server conn
       bracket
         (connectWithTimeout (T.unpack host) (fromIntegral port) tls)
@@ -96,17 +80,21 @@ runIrcClient registrator conn =
     --
     -- child loggers for various server threads
     srvlog :: Text -> m a -> m a
-    srvlog n =
-      withNamedLogger n (M.insert "server" (A.String $ IC.host $ server conn))
+    srvlog n action = do
+      conn <- view ircConnection
+      withNamedLogger
+        n
+        (M.insert "server" (A.String $ IC.host $ server conn))
+        action
     --
     -- read from the server and broadcast the parsed messages
     --
     -- i am not sure why, but this seems to hang and not react
     -- to async signals when interrupting - all the other treads go down
-    runFromServer :: C.Connection -> m ()
     runFromServer client =
       forever
-        (do line <- liftIO $ chomp <$> getLineTimeout client
+        (do conn <- view ircConnection
+            line <- liftIO $ chomp <$> getLineTimeout client
             let parsed =
                   Atto.parseOnly
                     (parseMessage <* Atto.endOfInput)
@@ -125,31 +113,13 @@ runIrcClient registrator conn =
     runToServer :: C.Connection -> m ()
     runToServer client =
       forever
-        (do cmd <- atomically $ readTBQueue (toServer conn)
+        (do conn <- view ircConnection
+            cmd <- atomically $ readTBQueue (toServer conn)
             logDebug (toText $ ircCmdLine cmd)
             liftIO $ C.connectionPut client (ircCmdLine cmd)) `finally` do
-      logDebug "Thread writing to IRC server terminated."
-      logDebug "HACK: close the socket to f*ck with the reading thread"
-      liftIO $ C.connectionClose client
-
--- | Fake http client, not aware of virtual servers
---
--- will read line-to-line and print, like the irc client
--- this is to easily test with a http server
---
--- url should contain a path like /, and be url encoded
--- if it contains spaces or other funny characters.
-fakeHttpClient :: B.ByteString -> C.Connection -> IO ()
-fakeHttpClient path conn = race_ fromServer toServer
-  where
-    fromServer =
-      forever $ do
-        line <- C.connectionGetLine 512 conn
-        when
-          (B.null line)
-          (BC8.putStrLn "EMPTY LINE MEANS EOF ... or empty line")
-        BC8.putStrLn (chomp line)
-    toServer = C.connectionPut conn ("GET " <> path <> " HTTP/1.0\r\n\r\n")
+        logDebug "Thread writing to IRC server terminated."
+        logDebug "HACK: close the socket to f*ck with the reading thread"
+        liftIO $ C.connectionClose client
 
 -- | Chop off a trailing CR if present
 chomp :: ByteString -> ByteString
@@ -163,15 +133,3 @@ chomp bs =
    in if B.null bs
         then bs
         else nocr
-
-ircStdinClient :: C.Connection -> IO ()
-ircStdinClient conn = race_ fromServer toServerInteractive
-  where
-    fromServer =
-      forever $ do
-        line <- C.connectionGetLine 512 conn
-        BC8.putStrLn (chomp line)
-    toServerInteractive =
-      forever $ do
-        line <- B.getLine
-        C.connectionPut conn (chomp line <> "\r\n")

@@ -1,42 +1,13 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Thunderbuns.Irc.Types where
 
 import Control.Concurrent (ThreadId, myThreadId)
-import Thunderbuns.Irc.Config (ServerConfig)
+import Control.Lens (lens)
+import Control.Lens.TH (makeClassy)
+import Thunderbuns.Irc.Config (HasServerConfig(..), ServerConfig)
 import Thunderbuns.Tlude
-import UnliftIO (MonadUnliftIO, liftIO)
 import UnliftIO.STM
-
--- | IrcServer connection
-data Connection = Connection
-  { server :: !ServerConfig
-  , fromServer :: !(TChan Message)
-  , toServer :: !(TBQueue Command)
-  , status :: !(TVar Status)
-  , handler :: !(TMVar ThreadId)
-  }
-
--- | Reserve the connection
---
--- Until it goes into status Connected, writing to the connection
--- gives an error.  Also stores a thread id for killing.
-reserveConnection :: MonadUnliftIO m => Connection -> m Bool
-reserveConnection conn = do
-  tid <- liftIO myThreadId
-  atomically $ do
-    st <- readTVar (status conn)
-    case st of
-      Disconnected -> do
-        writeTVar (status conn) Registration
-        putTMVar (handler conn) tid
-        pure True
-      _ -> pure False
-
--- | Release the connection
-releaseConnection :: MonadUnliftIO m => Connection -> Bool -> m ()
-releaseConnection conn _ =
-  atomically $ do
-    _ <- takeTMVar (handler conn)
-    writeTVar (status conn) Disconnected
 
 -- | IrcServer Connection status
 data Status
@@ -75,3 +46,44 @@ data Message = Message
   , msgCmd :: !Cmd
   , msgArgs :: ![ByteString]
   } deriving (Eq, Ord, Show)
+
+-- | IrcServer connection
+data IrcConnection = IrcConnection
+  { server :: !ServerConfig
+  , fromServer :: !(TChan Message)
+  , toServer :: !(TBQueue Command)
+  , status :: !(TVar Status)
+  , handler :: !(TMVar ThreadId)
+  }
+
+$(makeClassy ''IrcConnection)
+
+instance HasServerConfig IrcConnection where
+  serverConfig = lens server (\s a -> s { server = a })
+
+-- | Reserve the connection
+--
+-- Until it goes into status Connected, writing to the connection
+-- gives an error.  Also stores a thread id for killing.
+reserveConnection ::
+     (HasIrcConnection r, MonadReader r m, MonadUnliftIO m) => m Bool
+reserveConnection = do
+  conn <- view ircConnection
+  tid <- liftIO myThreadId
+  atomically $ do
+    st <- readTVar (status conn)
+    case st of
+      Disconnected -> do
+        writeTVar (status conn) Registration
+        putTMVar (handler conn) tid
+        pure True
+      _ -> pure False
+
+-- | Release the connection
+releaseConnection ::
+     (HasIrcConnection r, MonadReader r m, MonadUnliftIO m) => Bool -> m ()
+releaseConnection _ = do
+  conn <- view ircConnection
+  atomically $ do
+    _ <- takeTMVar (handler conn)
+    writeTVar (status conn) Disconnected

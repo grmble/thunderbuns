@@ -45,6 +45,7 @@ dependencies:
 - persistent
 - persistent-sqlite
 - persistent-template
+- random
 - resourcet
 - resource-pool
 - scientific
