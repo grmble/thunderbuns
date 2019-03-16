@@ -54,21 +54,20 @@ registerConnection msgChan cmdQueue = do
   for_ (channels $ server conn) $ \cn ->
     atomically (writeTBQueue cmdQueue (Command "JOIN" [T.encodeUtf8 cn]))
   atomically $ writeTVar (status conn) Connected
-  pongPing n msgChan cmdQueue
+  pongPing msgChan cmdQueue
 
 pongPing ::
      (Bunyan r m, MonadUnliftIO m)
-  => ByteString
-  -> TChan Message
+  => TChan Message
   -> TBQueue Command
   -> m ()
-pongPing nick msgChan cmdQueue =
+pongPing msgChan cmdQueue =
   finally -- infix syntax looks horrible after hindent
     (forever $ do
        msg <- atomically $ readTChan msgChan
        case msgCmd msg of
          Cmd "PING" ->
-           atomically $ writeTBQueue cmdQueue (Command "PONG" [nick])
+           atomically $ writeTBQueue cmdQueue (Command "PONG" (msgArgs msg))
          _ -> pure ())
     (logDebug "IRC Pongping thread terminated.")
 
