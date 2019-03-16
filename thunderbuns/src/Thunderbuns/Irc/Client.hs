@@ -10,7 +10,6 @@ import qualified Data.Attoparsec.ByteString as Atto
 import qualified Data.ByteString as B
 import Data.Default (def)
 import qualified Data.HashMap.Strict as M
-import Data.Maybe (fromJust)
 import qualified Data.Text as T
 import qualified Network.Connection as C
 import System.Log.Bunyan.LogText (toText)
@@ -40,8 +39,12 @@ connect host port tls = do
           Nothing
   liftIO $ C.connectTo ctx params
 
+clientConnectTimeout :: Int
+clientConnectTimeout = microSeconds 30
+
 clientTimeout :: Int
-clientTimeout = microSeconds 60
+clientTimeout = microSeconds 600
+
 
 runIrcClient ::
      forall r m. (HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
@@ -74,9 +77,15 @@ runIrcClient registrator =
               registrator rgchan (toServer conn)))
     -- connect within timeout or exception
     connectWithTimeout host port tls =
-      fromJust <$> timeout clientTimeout (connect host port tls)
+      timeout clientConnectTimeout (connect host port tls) >>=
+      fromJustOrError "connect timed out"
     getLineTimeout client =
-      fromJust <$> timeout clientTimeout (C.connectionGetLine 512 client)
+      timeout clientTimeout (C.connectionGetLine 512 client) >>=
+      fromJustOrError "connectionGetLine timed out"
+    --
+    -- throw a error with a message if Nothing
+    fromJustOrError _ (Just x) = pure x
+    fromJustOrError msg Nothing = throwString msg
     --
     -- child loggers for various server threads
     srvlog :: Text -> m a -> m a
