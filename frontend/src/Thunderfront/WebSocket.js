@@ -5,8 +5,8 @@ exports.primitives = {
     if (! url || url === "") {
       var loc = window.location;
       var proto = loc.protocol;
-      proto = (proto === "https") ? "wss" : "ws";
-      url = proto + "://" + loc.host + loc.pathname;
+      proto = (proto === "https:") ? "wss:" : "ws:";
+      url = proto + "//" + loc.host + loc.pathname;
     }
     console.log("creating new websocket for " + url);
     return new window.WebSocket(url);
