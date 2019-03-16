@@ -31,9 +31,9 @@ const distFiles = [
 
 
 function clean () {
-  return del(['output', '.pulp-cache']);
+  return del(['output', '.pulp-cache', staticDir]);
 }
-clean.description = 'Clean the output and .pulp-cache directories';
+clean.description = 'Clean the output, dist and .pulp-cache directories';
 exports.clean = clean;
 
 
@@ -48,13 +48,22 @@ function compile () {
   return purescript.compile({ src: sources });
 }
 
-function bundle () {
+// bundles & zips app.js
+function bundleOnly() {
   return purescript.bundle(
     { src: 'output/**/*.js'
       , module: 'Main'
       , main: 'Main'
       , output: staticDir + 'app.js' });
 }
+
+function compressBundle() {
+  return gulp.src(staticDir + 'app.js')
+    .pipe(gzip())
+    .pipe(gulp.dest(staticDir));
+}
+
+const bundle = gulp.series(bundleOnly, compressBundle);
 
 function test () {
   return purescript.bundle({ src: 'output/**/*.js', main: 'Test.Main' })
@@ -64,28 +73,22 @@ function test () {
 exports.test = gulp.series(compile, test);
 exports.test.description = 'Run the purescript tests.';
 
-function gzipApp () {
-  return gulp.src(staticDir + 'app.js')
-    .pipe(gzip())
-    .pipe(gulp.dest(staticDir));
-}
-
-function dist () {
+function distOnly () {
   return gulp.src(distFiles)
     .pipe(gulp.dest(staticDir));
 }
 
-// if gzip is just in the pipe above (in dist)
-// the original files are deleted, which warp does not like
-function gzipDist () {
+function compressDist () {
   return gulp.src(staticDirCompressAssets)
     .pipe(gzip())
     .pipe(gulp.dest(staticDir));
 }
 
-exports.default = gulp.parallel(gulp.series(compile, bundle, gzipApp), 
-  gulp.series(dist, gzipDist));
-exports.default.description = 'Compile and copy to server directory.';
+const dist = gulp.series(distOnly, compressDist);
+
+exports.default = gulp.parallel(gulp.series(compile, bundle),
+                                gulp.series(dist));
+exports.default.description = 'Compile and copy to dist directory.';
 
 function watchPurescript () {
   return gulp.watch(sources, gulp.series(compile, bundle));

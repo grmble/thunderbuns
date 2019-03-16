@@ -8,9 +8,10 @@
 module Thunderbuns.CmdLine where
 
 import Control.Concurrent (threadDelay)
-import Control.Lens (view, set)
+import Control.Lens (set, view)
 import Control.Monad.Reader (ask, runReaderT)
 import qualified Data.Aeson as A
+import Data.CaseInsensitive (original)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust)
 import qualified Data.Text as T
@@ -24,7 +25,7 @@ import Network.Wai.Application.Static
   , staticApp
   )
 import Network.Wai.Handler.Warp
-import Network.Wai.Handler.WebSockets (websocketsOr)
+import Network.Wai.Handler.WebSockets (isWebSocketsReq, websocketsOr)
 import Network.Wai.Middleware.Approot (fromRequest, hardcoded)
 import Network.Wai.Middleware.Gzip
   ( GzipFiles(..)
@@ -119,7 +120,11 @@ runWebServer responseChan =
     env <- ask
     liftIO
       (runSettings
-         (mySettings closeAction (fromIntegral port) (view logger env) defaultSettings)
+         (mySettings
+            closeAction
+            (fromIntegral port)
+            (view logger env)
+            defaultSettings)
          (mainApplication responseChan env)) `finally` do
       logInfo (T.pack $ "Stopping HTTP on port " <> show port)
       action <- timeout 50000 $ takeMVar closeAction
@@ -158,6 +163,7 @@ mainApplication responseChan = logResponseTime serve
       let srvPass = I.serverPassword srv
       let setAppRootOrGuess =
             maybe fromRequest (hardcoded . T.encodeUtf8) (C.appRoot cfg)
+      let root = normalizePrefix $ C.rootPrefix cfg
       basicAuth
         (\u p ->
            pure $
@@ -166,12 +172,23 @@ mainApplication responseChan = logResponseTime serve
         "Thunderbuns" $
         gzip (def {gzipFiles = GzipPreCompressed GzipIgnore}) $
         setAppRootOrGuess $
-        mapUrls $
-        mount (C.rootPrefix cfg) $
-        websocketsOr
-          defaultConnectionOptions
-          (wsApplication responseChan env)
-          (staticApp settings)
+        logWsRequestHeaders
+          (websocketsOr
+             defaultConnectionOptions
+             (wsApplication responseChan env)
+             (mapUrls (mount root (staticApp settings))))
+          env
+    normalizePrefix :: Text -> Text
+    normalizePrefix s =
+      let noHead =
+            if "/" `T.isPrefixOf` s
+              then T.tail s
+              else s
+          noTail =
+            if "/" `T.isSuffixOf` noHead
+              then T.dropEnd 1 noHead
+              else noHead
+       in noTail
 
 wsApplication ::
      (C.HasDatabasePool r, HasIrcConnection r, HasLogger r)
@@ -229,13 +246,32 @@ logResponseTime = go
       Bunyan.withNamedLogger
         "thunderbuns.http"
         (requestLoggingContext req)
-        (Bunyan.logDuration' $ \cb lg -> do
+        (Bunyan.logDuration' DEBUG "http request" $ \cb lg -> do
            let env' = set logger lg env
            app env' req $ \res -> do
              responded <- respond res
              cb (responseLoggingContext res M.empty)
              pure responded)
         (view logger env)
+
+logWsRequestHeaders :: HasLogger r => Application -> r -> Application
+logWsRequestHeaders action env req respond = do
+  when (isWebSocketsReq req) $
+    Bunyan.logRecord
+      DEBUG
+      (requestHeaderContext req)
+      "websocket request headers"
+      (view logger env)
+  action req respond
+
+requestHeaderContext :: Request -> A.Object -> A.Object
+requestHeaderContext req = M.insert "headers" headersObject
+  where
+    headersObject = A.Object (M.fromList headerList)
+    headerList =
+      fmap
+        (\(k, v) -> (toText $ original k, A.String $ toText v))
+        (requestHeaders req)
 
 requestLoggingContext :: Request -> A.Object -> A.Object
 requestLoggingContext req =

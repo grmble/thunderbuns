@@ -40,7 +40,7 @@ spec = do
       Right (Message Nothing (Cmd "PRIVMSG") ["#world", "hello"])
   describe "IRC LowerCase" $ do
     it "should lowercase normal strings" $ ircLowerCase "YES" `shouldBe` "yes"
-    it "should handle non-ascii characters" $
+    it "should handle utf8 characters" $
       ircLowerCase "J\xc3\x9cRGEN" `shouldBe` "j\xc3\xbcrgen"
     it "should handle the special irc rules" $
       ircLowerCase "[\\]~" `shouldBe` "{|}^"

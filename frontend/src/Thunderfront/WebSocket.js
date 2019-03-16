@@ -1,13 +1,23 @@
 "use strict";
 
 exports.primitives = {
-  newWebSocket: function(url) {
-    if (! url || url === "") {
-      var loc = window.location;
-      var proto = loc.protocol;
-      proto = (proto === "https:") ? "wss:" : "ws:";
+  newWebSocket: function(path) {
+    var loc = window.location;
+    var proto = loc.protocol;
+    proto = (proto === "https:") ? "wss:" : "ws:";
+    var url;
+    if (! path || path === "") {
+      // append /ws/ to the path, but without the index.html (if present)
       url = proto + "//" + loc.host + loc.pathname;
+      url = url.replace(/\/[^\/]*$/, "/ws/");
+    } else {
+      // use the path the caller wants
+      if (! path.startsWith("/")) {
+        path = "/" + path;
+      }
+      url = proto + "//" + loc.host + path;
     }
+
     console.log("creating new websocket for " + url);
     return new window.WebSocket(url);
   },

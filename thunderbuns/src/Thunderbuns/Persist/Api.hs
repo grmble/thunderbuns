@@ -36,7 +36,7 @@ runCreateSqlitePool cfg = do
 withDatabasePool ::
      (C.HasDatabasePool r, Bunyan r m) => ReaderT SqlBackend IO a -> m a
 withDatabasePool persistAction =
-  logDuration $ do
+  logDuration TRACE "withDatabasePool" $ do
     pool <- view (C.databasePool . C._DatabasePool)
     liftIO $ withResource pool (runReaderT persistAction)
 

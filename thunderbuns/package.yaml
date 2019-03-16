@@ -27,6 +27,7 @@ dependencies:
 - bunyan
 - bunyan-rio
 - bytestring
+- case-insensitive
 - containers
 - connection
 - data-default
