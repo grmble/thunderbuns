@@ -7,6 +7,14 @@ const gzip = require('gulp-gzip');
 
 const staticDir = 'dist/';
 
+// note - no app.js
+// javascript is in a different pipeline
+const staticDirCompressAssets = [
+  'dist/*.css',
+  'dist/*.html',
+  'dist/*.min.js',
+];
+
 const sources = [
   'src/**/*.purs',
   'test/**/*.purs',
@@ -20,7 +28,6 @@ const distFiles = [
   'bower_components/toastr/toastr.min.js',
   'bower_components/jquery/dist/jquery.min.js',
 ];
-
 
 
 function clean () {
@@ -65,11 +72,19 @@ function gzipApp () {
 
 function dist () {
   return gulp.src(distFiles)
+    .pipe(gulp.dest(staticDir));
+}
+
+// if gzip is just in the pipe above (in dist)
+// the original files are deleted, which warp does not like
+function gzipDist () {
+  return gulp.src(staticDirCompressAssets)
     .pipe(gzip())
     .pipe(gulp.dest(staticDir));
 }
 
-exports.default = gulp.parallel(gulp.series(compile, bundle, gzipApp), dist);
+exports.default = gulp.parallel(gulp.series(compile, bundle, gzipApp), 
+  gulp.series(dist, gzipDist));
 exports.default.description = 'Compile and copy to server directory.';
 
 function watchPurescript () {
