@@ -6,7 +6,7 @@ import Data.ByteString.D64.UUID
 import System.Log.Bunyan.LogText
 import Test.Hspec hiding (example)
 import Thunderbuns.Irc.Types
-import Thunderbuns.WS.Handler
+import Thunderbuns.WS.Api
 import Thunderbuns.WS.Types
 
 main :: IO ()

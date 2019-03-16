@@ -16,7 +16,7 @@ import qualified Network.Connection as C
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
 import qualified Thunderbuns.Irc.Config as IC
-import Thunderbuns.Irc.Parser (ircCmdLine, ircLine, parseMessage)
+import Thunderbuns.Irc.Parser (printCommand, printMessage, parseMessage)
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import Thunderbuns.Utils (microSeconds)
@@ -106,7 +106,7 @@ runIrcClient registrator =
                   (M.insert "line" (A.String $ toText line))
                   ("Can not parse line: " <> toText s)
               Right msg -> do
-                logDebug (toText $ ircLine msg)
+                logDebug (toText $ printMessage msg)
                 atomically $ writeTChan (fromServer conn) msg) `finally`
       logDebug "Thread reading from IRC server terminated."
     -- from the command queue and send to server
@@ -115,8 +115,8 @@ runIrcClient registrator =
       forever
         (do conn <- view ircConnection
             cmd <- atomically $ readTBQueue (toServer conn)
-            logDebug (toText $ ircCmdLine cmd)
-            liftIO $ C.connectionPut client (ircCmdLine cmd)) `finally` do
+            logDebug (toText $ printCommand cmd)
+            liftIO $ C.connectionPut client (printCommand cmd)) `finally` do
         logDebug "Thread writing to IRC server terminated."
         logDebug "HACK: close the socket to f*ck with the reading thread"
         liftIO $ C.connectionClose client

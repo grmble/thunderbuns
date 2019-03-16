@@ -4,10 +4,10 @@ import Control.Monad.Reader
 import System.Log.Bunyan.Context (someException)
 import System.Log.Bunyan.RIO
 import Thunderbuns.Config (HasDatabasePool)
-import Thunderbuns.Persist.Api (insertResponse, withDatabasePool)
 import Thunderbuns.Irc.Api (Message)
+import Thunderbuns.Persist.Api (insertResponse, withDatabasePool)
 import Thunderbuns.Tlude
-import qualified Thunderbuns.WS.Handler as W
+import qualified Thunderbuns.WS.Api as W
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO.Exception (catch, finally)
 import UnliftIO.STM (TChan, atomically, readTChan, writeTChan)

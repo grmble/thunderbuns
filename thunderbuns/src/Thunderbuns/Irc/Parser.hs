@@ -19,15 +19,15 @@ parseMessage = Message <$> parsePrefix <*> parseCmd <*> parseArgs <?> "Message"
 --
 -- The string will be terminated by CR LF.  This bytestring
 -- can be sent to an IRC server.
-ircLine :: Message -> ByteString
-ircLine (Message pre cmd args) =
-  let cmdStr = ircCmd cmd
+printMessage :: Message -> ByteString
+printMessage (Message pre cmd args) =
+  let cmdStr = printCmd cmd
       lst = maybe [] (\x -> [":" <> x]) pre ++ (cmdStr : args)
    in B.intercalate " " (quoteLastArg lst) <> "\r\n"
 
-ircCmd :: Cmd -> ByteString
-ircCmd (Response code) = fromString $ show $ fromCode code
-ircCmd (Cmd bs) = bs
+printCmd :: Cmd -> ByteString
+printCmd (Response code) = fromString $ show $ fromCode code
+printCmd (Cmd bs) = bs
 
 -- | Parse an irc command
 parseCommand :: Parser Command
@@ -35,13 +35,13 @@ parseCommand =
   Command <$> token middle <*> parseArgs' <?> "Command"
 
 -- | Bytestring representation of a Command
-ircCmdLine :: Command -> ByteString
-ircCmdLine (Command cmd args) =
+printCommand :: Command -> ByteString
+printCommand (Command cmd args) =
   let lst = cmd : args
-   in ircArgs lst <> "\r\n"
+   in printArgs lst <> "\r\n"
 
-ircArgs :: [ByteString] -> ByteString
-ircArgs = B.intercalate " " . quoteLastArg
+printArgs :: [ByteString] -> ByteString
+printArgs = B.intercalate " " . quoteLastArg
 
 quoteLastArg :: [ByteString] -> [ByteString]
 quoteLastArg [] = []

@@ -5,6 +5,10 @@ module Thunderbuns.Irc.Types where
 import Control.Concurrent (ThreadId, myThreadId)
 import Control.Lens (lens)
 import Control.Lens.TH (makeClassy)
+import Data.Char (toLower)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import System.Log.Bunyan.LogText
 import Thunderbuns.Irc.Config (HasServerConfig(..), ServerConfig)
 import Thunderbuns.Tlude
 import UnliftIO.STM
@@ -59,7 +63,7 @@ data IrcConnection = IrcConnection
 $(makeClassy ''IrcConnection)
 
 instance HasServerConfig IrcConnection where
-  serverConfig = lens server (\s a -> s { server = a })
+  serverConfig = lens server (\s a -> s {server = a})
 
 -- | Reserve the connection
 --
@@ -87,3 +91,25 @@ releaseConnection _ = do
   atomically $ do
     _ <- takeTMVar (handler conn)
     writeTVar (status conn) Disconnected
+
+{- | IRC specific lowercase for nicks, users, channels
+
+Because of IRC's Scandinavian origin, the characters {}|^ are
+considered to be the lower case equivalents of the characters []\~,
+respectively. This is a critical issue when determining the
+equivalence of two nicknames or channel names.
+
+>>> ircLowerCase "[\\]~"
+"{|}^"
+--}
+ircLowerCase :: ByteString -> ByteString
+ircLowerCase bs =
+  let txt = toText bs
+      lower =
+        T.map $ \case
+          '[' -> '{'
+          ']' -> '}'
+          '\\' -> '|'
+          '~' -> '^'
+          x -> toLower x
+   in T.encodeUtf8 (lower txt)

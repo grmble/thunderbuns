@@ -9,12 +9,16 @@ module Thunderbuns.Irc.Api
   , sendCommand
   , newConnection
   , dupMessageChan
+  , printCommand
+  , printMessage
+  , ircLowerCase
   ) where
 
 import System.Log.Bunyan.RIO
 import Thunderbuns.Irc.Client
 import Thunderbuns.Irc.Config
 import Thunderbuns.Irc.Connection
+import Thunderbuns.Irc.Parser
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import Thunderbuns.Utils
@@ -36,5 +40,6 @@ superviseIrcClient =
     (runIrcClient registerConnection)
 
 -- | A dup of the broadcast channel receiving all messages from the server
-dupMessageChan :: (HasIrcConnection r, MonadReader r m, MonadIO m) => m (TChan Message)
+dupMessageChan ::
+     (HasIrcConnection r, MonadReader r m, MonadIO m) => m (TChan Message)
 dupMessageChan = view ircConnection >>= atomically . dupTChan . fromServer

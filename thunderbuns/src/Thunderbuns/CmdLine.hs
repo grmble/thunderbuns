@@ -49,7 +49,8 @@ import qualified Thunderbuns.Irc.Types as I (IrcConnection(..))
 import Thunderbuns.Persist.Api (runCreateSqlitePool)
 import Thunderbuns.Persist.Main (queueMessagesForWSClients)
 import Thunderbuns.Tlude
-import qualified Thunderbuns.WS.Handler as W
+import qualified Thunderbuns.WS.Api as W
+import qualified Thunderbuns.WS.Main as W
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (timeout)
 import UnliftIO.Async (Async, async, cancel, race)

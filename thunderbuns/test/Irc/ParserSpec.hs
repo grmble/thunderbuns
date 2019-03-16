@@ -28,7 +28,8 @@ spec = do
       parseOnly
         (parseMessage <* endOfInput)
         ":nick!user@host PRIVMSG #world :hello\r\n" `shouldBe`
-      Right (Message (Just "nick!user@host") (Cmd "PRIVMSG") ["#world", "hello"])
+      Right
+        (Message (Just "nick!user@host") (Cmd "PRIVMSG") ["#world", "hello"])
     it "PRIVMSG without CRLF" $
       parseOnly
         (parseMessage <* endOfInput)
@@ -37,6 +38,12 @@ spec = do
     it "Message prefix is optional" $
       parseOnly (parseMessage <* endOfInput) "PRIVMSG #world :hello\r\n" `shouldBe`
       Right (Message Nothing (Cmd "PRIVMSG") ["#world", "hello"])
+  describe "IRC LowerCase" $ do
+    it "should lowercase normal strings" $ ircLowerCase "YES" `shouldBe` "yes"
+    it "should handle non-ascii characters" $
+      ircLowerCase "J\xc3\x9cRGEN" `shouldBe` "j\xc3\xbcrgen"
+    it "should handle the special irc rules" $
+      ircLowerCase "[\\]~" `shouldBe` "{|}^"
   where
     leftInfixOf :: String -> Either String a -> Bool
     leftInfixOf s = either (isInfixOf s) (const False)
