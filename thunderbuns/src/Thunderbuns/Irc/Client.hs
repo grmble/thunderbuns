@@ -6,7 +6,6 @@ This is the code that handles the actual network connection to the irc server
 module Thunderbuns.Irc.Client where
 
 import qualified Data.Aeson as A
-import qualified Data.Attoparsec.ByteString as Atto
 import qualified Data.ByteString as B
 import Data.Default (def)
 import qualified Data.HashMap.Strict as M
@@ -15,7 +14,7 @@ import qualified Network.Connection as C
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO
 import qualified Thunderbuns.Irc.Config as IC
-import Thunderbuns.Irc.Parser (printCommand, printMessage, parseMessage)
+import Thunderbuns.Irc.Parser
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 import Thunderbuns.Utils (microSeconds)
@@ -44,7 +43,6 @@ clientConnectTimeout = microSeconds 30
 
 clientTimeout :: Int
 clientTimeout = microSeconds 600
-
 
 runIrcClient ::
      forall r m. (HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
@@ -104,10 +102,7 @@ runIrcClient registrator =
       forever
         (do conn <- view ircConnection
             line <- liftIO $ chomp <$> getLineTimeout client
-            let parsed =
-                  Atto.parseOnly
-                    (parseMessage <* Atto.endOfInput)
-                    (line <> "\r\n")
+            let parsed = runParser parseMessage (line <> "\r\n")
             case parsed of
               Left s ->
                 logRecord

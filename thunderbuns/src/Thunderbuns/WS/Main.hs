@@ -4,7 +4,6 @@ module Thunderbuns.WS.Main where
 
 import Control.Monad.Except
 import qualified Data.Aeson as A
-import Data.Attoparsec.ByteString (endOfInput, parseOnly)
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Text.Encoding as T
 import Network.WebSockets (receiveData)
@@ -14,9 +13,9 @@ import Thunderbuns.Config (HasDatabasePool)
 import Thunderbuns.Irc.Api (HasIrcConnection, sendCommand)
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
-import Thunderbuns.WS.Api
 import Thunderbuns.Persist.Api (selectChannelBefore, withSqlBackend)
 import Thunderbuns.Tlude
+import Thunderbuns.WS.Api
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (MonadUnliftIO(..))
 
@@ -25,7 +24,8 @@ type EIO = ExceptT (Maybe W.RequestID, Text)
 
 -- | Handle the websocket connection
 handleConn ::
-     forall r m. (HasDatabasePool r, HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
+     forall r m.
+     (HasDatabasePool r, HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
   => GuardedConnection
   -> m ()
 handleConn gc@GuardedConnection {conn} =
@@ -59,7 +59,8 @@ stringError rqid msg err = (rqid, msg <> toText err)
 
 -- | handle a valid request
 handleRequest ::
-     forall r m. (HasIrcConnection r, HasDatabasePool r, Bunyan r m, MonadUnliftIO m)
+     forall r m.
+     (HasIrcConnection r, HasDatabasePool r, Bunyan r m, MonadUnliftIO m)
   => GuardedConnection
   -> W.RequestID
   -> W.Request
@@ -78,7 +79,7 @@ handleRequest gc rqid = go
     parseCommand cmd = do
       let bs = T.encodeUtf8 cmd
       stringError (Just rqid) "Error parsing IRC command: " `withExceptT`
-        ExceptT (pure (parseOnly (I.parseCommand <* endOfInput) bs))
+        ExceptT (pure (I.runParser I.parseCommand bs))
     --
     -- helper for sending commands
     sendCommand' :: I.Command -> EIO m ()

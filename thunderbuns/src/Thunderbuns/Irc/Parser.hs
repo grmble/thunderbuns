@@ -8,6 +8,12 @@ import qualified Data.Word as W
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
 
+-- | Run the parser on the complete input.
+--
+-- It must match up until the end.
+runParser :: Parser a -> ByteString -> Either String a
+runParser p = parseOnly (p <* endOfInput)
+
 -- | Parse a message from an irc server
 --
 -- The message is expected as on-the-wire.  it must be
@@ -31,8 +37,7 @@ printCmd (Cmd bs) = bs
 
 -- | Parse an irc command
 parseCommand :: Parser Command
-parseCommand =
-  Command <$> token middle <*> parseArgs' <?> "Command"
+parseCommand = Command <$> token middle <*> parseArgs' <?> "Command"
 
 -- | Bytestring representation of a Command
 printCommand :: Command -> ByteString
@@ -66,8 +71,7 @@ isErrorCode :: Code -> Bool
 isErrorCode c = fromCode c >= 400
 
 parsePrefix :: Parser (Maybe ByteString)
-parsePrefix =
-  optional (token (string ":" *> takeWhile1 notSpCrLfCl) <?> "prefix")
+parsePrefix = optional (token (string ":" *> middle) <?> "prefix")
 
 parseCmd :: Parser Cmd
 parseCmd =
@@ -86,14 +90,18 @@ parseArgs' =
 token :: Parser a -> Parser a
 token p = p <* skipMany (char ' ')
 
--- | Matches anything but space, cr, lf or :
+-- | Matches anything but space, cr, lf or : on the first character, allow : after
 middle :: Parser ByteString
-middle = Atto.takeWhile1 notSpCrLfCl <?> "Middle - at least 1 char, no prefix allowed"
+middle =
+  fst <$>
+  (match (void $ satisfy notSpCrLfCl <* Atto.takeWhile notSpCrLf) <?>
+   "Middle - no prefix allowed")
 
 -- | Matches : followed by anything but cr or lf or null
 trailing :: Parser ByteString
 trailing = char ':' *> Atto.takeWhile notCrLf
 
+-- "not inner parts"
 notSpCrLfCl :: W.Word8 -> Bool
 notSpCrLfCl 0x00 = False
 notSpCrLfCl 0x20 = False
@@ -101,6 +109,14 @@ notSpCrLfCl 0x0d = False
 notSpCrLfCl 0x0a = False
 notSpCrLfCl 0x3a = False -- ':'
 notSpCrLfCl _ = True
+
+-- "inner parts"
+notSpCrLf :: W.Word8 -> Bool
+notSpCrLf 0x00 = False
+notSpCrLf 0x20 = False
+notSpCrLf 0x0d = False
+notSpCrLf 0x0a = False
+notSpCrLf _ = True
 
 notCrLf :: W.Word8 -> Bool
 notCrLf 0x00 = False
