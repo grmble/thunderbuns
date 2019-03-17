@@ -15,7 +15,7 @@ import Thunderbuns.Irc.Api (HasIrcConnection, sendCommand)
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
 import Thunderbuns.WS.Api
-import Thunderbuns.Persist.Api (selectChannelBefore, withDatabasePool)
+import Thunderbuns.Persist.Api (selectChannelBefore, withSqlBackend)
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Types as W
 import UnliftIO (MonadUnliftIO(..))
@@ -71,7 +71,7 @@ handleRequest gc rqid = go
       parseCommand cmd >>= sendCommand'
       pure $ W.Done rqid
     go W.GetChannelMessages {channel, before} = do
-      msgs <- withDatabasePool (selectChannelBefore channel before)
+      msgs <- withSqlBackend (selectChannelBefore channel before)
       for_ msgs (liftIO . sendGuardedTextData gc . A.encode)
       pure $ W.Done rqid
     parseCommand :: Text -> EIO m I.Command

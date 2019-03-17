@@ -34,13 +34,14 @@ dependencies:
 - dhall
 - d64
 - d64-uuid
+- fast-logger # for persistent/monad-logger
 - formatting
 - hashable
 - http-api-data
 - http-types
 # - jose-jwt
 - lens  # it's pulled in by dhall (i think), we might as well use it
-- monad-logger # for runNoLoggingT
+- monad-logger # for persistent
 - mtl
 - optparse-applicative
 - persistent
@@ -48,7 +49,6 @@ dependencies:
 - persistent-template
 - random
 - resourcet
-- resource-pool
 - scientific
 - text
 - time

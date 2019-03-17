@@ -6,7 +6,6 @@ module Thunderbuns.Config where
 import Control.Lens (lens)
 import Control.Lens.TH (makeClassy, makePrisms)
 import qualified Data.Aeson as A
-import Data.Pool (Pool)
 import Database.Persist.Sqlite (SqlBackend)
 import Dhall (Interpret)
 import System.Log.Bunyan.RIO (HasLogger(..), Logger)
@@ -67,7 +66,7 @@ instance Interpret Config
 
 -- | Newtype for Pool SqlBackend, so we can generate the HasDatabasePool class
 newtype DatabasePool =
-  DatabasePool (Pool SqlBackend)
+  DatabasePool (MVar SqlBackend)
 
 $(makeClassy ''DatabasePool)
 

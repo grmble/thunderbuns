@@ -1,11 +1,12 @@
 module Thunderbuns.Persist.Main where
 
 import Control.Monad.Reader
+import Database.Persist (insert_)
 import System.Log.Bunyan.Context (someException)
 import System.Log.Bunyan.RIO
 import Thunderbuns.Config (HasDatabasePool)
 import Thunderbuns.Irc.Api (Message)
-import Thunderbuns.Persist.Api (insertResponse, withDatabasePool)
+import Thunderbuns.Persist.Api (responseToMessage, withSqlBackend)
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Api as W
 import qualified Thunderbuns.WS.Types as W
@@ -30,5 +31,6 @@ queueMessagesForWSClients src dst =
       forever $ do
         msg <- atomically $ readTChan src
         response <- W.makeResponse msg
-        withDatabasePool (insertResponse response)
+        let dbms = responseToMessage response
+        unless (null dbms) (withSqlBackend (for_ dbms insert_))
         atomically $ writeTChan dst response

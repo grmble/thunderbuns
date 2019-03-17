@@ -47,7 +47,7 @@ import qualified Thunderbuns.Config as C
 import Thunderbuns.Irc.Api
 import qualified Thunderbuns.Irc.Config as I (ServerConfig(..))
 import qualified Thunderbuns.Irc.Types as I (IrcConnection(..))
-import Thunderbuns.Persist.Api (runCreateSqlitePool)
+import Thunderbuns.Persist.Api (closeDatabase, openDatabase)
 import Thunderbuns.Persist.Main (queueMessagesForWSClients)
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Api as W
@@ -60,16 +60,14 @@ import UnliftIO.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
 import UnliftIO.STM
 import WaiAppStatic.Types (toPiece)
 
-initialEnv :: IO C.Env
-initialEnv = do
-  _envConfig <- liftIO $ input auto "./config.dhall"
-  _envLogQueue <- newEmptyMVar
+initialEnv :: C.Config -> MVar A.Object -> IO C.Env
+initialEnv _envConfig _envLogQueue = do
   let pri = textToPriority (C.priority $ C.logging _envConfig)
   _envLogger <- rootLogger "thunderbuns.root" pri (putMVar _envLogQueue)
   _envIrcConnection <- runReaderT newConnection _envConfig
   _envWSChan <- newBroadcastTChanIO
   let dbc = view C.databaseConfig _envConfig
-  _envDBPool <- runReaderT (runCreateSqlitePool dbc) _envLogger
+  _envDBPool <- runReaderT (openDatabase dbc) _envLogger
   pure
     C.Env
       { C._envConfig
@@ -80,22 +78,25 @@ initialEnv = do
       , C._envDBPool
       }
 
+closeEnv :: C.Env -> IO ()
+closeEnv env@C.Env {C._envDBPool} = runReaderT (closeDatabase _envDBPool) env
+
 runMain :: IO ()
 runMain = do
-  env <- initialEnv
-  let logQueue = view C.envLogQueue env
-  let wsChan = view C.envWSChan env
-  let lgCfg = view C.logConfig env
-  withLogWriter logQueue (C.filename lgCfg) $
-    flip runReaderT env $
-    bracket
-      (async superviseIrcClient)
-      (logAndCancel "Canceling IRC Connection")
-      (const $
-       void $
-       race
-         (runWebServer wsChan)
-         (dupMessageChan >>= flip queueMessagesForWSClients wsChan))
+  cfg <- input auto "./config.dhall"
+  lq <- newEmptyMVar
+  withLogWriter lq (C.filename (C.logging cfg)) $
+    bracket (initialEnv cfg lq) closeEnv $ \env -> do
+      let wsChan = view C.envWSChan env
+      flip runReaderT env $
+        bracket
+          (async superviseIrcClient)
+          (logAndCancel "Canceling IRC Connection")
+          (const $
+           void $
+           race
+             (runWebServer wsChan)
+             (dupMessageChan >>= flip queueMessagesForWSClients wsChan))
 
 logAndCancel :: Bunyan r m => T.Text -> Async a -> m ()
 logAndCancel msg a = do

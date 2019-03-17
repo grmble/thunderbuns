@@ -1,9 +1,9 @@
 *.cabal
 *.log
 *.o
-*.sqlite3
-*.sqlite3-shm
-*.sqlite3-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.swp
 *.x
 *~
@@ -12,7 +12,6 @@
 .stack-work/
 .stack-work/
 /config.dhall
-/thunderbuns.sqlite
 TAGS
 TODO.txt
 x.*
