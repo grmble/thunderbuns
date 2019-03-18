@@ -5,12 +5,14 @@ module Thunderbuns.WS.Main where
 import Control.Monad.Except
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as L
+import Data.Coerce (coerce)
 import qualified Data.Text.Encoding as T
 import Network.WebSockets (receiveData)
 import System.Log.Bunyan.LogText (toText)
 import System.Log.Bunyan.RIO (Bunyan, logDebug)
 import Thunderbuns.Config (HasDatabasePool)
 import Thunderbuns.Irc.Api (HasIrcConnection, sendCommand)
+import qualified Thunderbuns.Irc.Config as I
 import qualified Thunderbuns.Irc.Parser as I
 import qualified Thunderbuns.Irc.Types as I
 import Thunderbuns.Persist.Api (selectChannelBefore, withSqlBackend)
@@ -28,7 +30,9 @@ handleConn ::
      (HasDatabasePool r, HasIrcConnection r, Bunyan r m, MonadUnliftIO m)
   => GuardedConnection
   -> m ()
-handleConn gc@GuardedConnection {conn} =
+handleConn gc@GuardedConnection {conn} = do
+  cfg <- view (I.ircConnection . I.serverConfig)
+  sendGuardedTextData gc $ A.encode $ W.KnownChannels $ coerce $ I.channels cfg
   forever $ do
     bs <- liftIO $ receiveData conn
     logDebug ("Received: " <> toText bs)
@@ -72,8 +76,8 @@ handleRequest gc rqid = go
       parseCommand cmd >>= sendCommand'
       pure $ W.Done rqid
     go W.GetChannelMessages {channel, before} = do
-      msgs <- withSqlBackend (selectChannelBefore channel before)
-      for_ msgs (liftIO . sendGuardedTextData gc . A.encode)
+      msg <- withSqlBackend (selectChannelBefore channel before)
+      liftIO $ sendGuardedTextData gc $ A.encode msg
       pure $ W.Done rqid
     parseCommand :: Text -> EIO m I.Command
     parseCommand cmd = do

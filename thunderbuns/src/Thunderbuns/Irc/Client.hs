@@ -17,7 +17,7 @@ import qualified Thunderbuns.Irc.Config as IC
 import Thunderbuns.Irc.Parser
 import Thunderbuns.Irc.Types
 import Thunderbuns.Tlude
-import Thunderbuns.Utils (microSeconds)
+import Thunderbuns.Utils (fromJustOrError, microSeconds)
 import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
 import UnliftIO.Async (race_)
 import UnliftIO.Exception (bracket, finally, throwString)
@@ -80,10 +80,6 @@ runIrcClient registrator =
     getLineTimeout client =
       timeout clientTimeout (C.connectionGetLine 512 client) >>=
       fromJustOrError "connectionGetLine timed out"
-    --
-    -- throw a error with a message if Nothing
-    fromJustOrError _ (Just x) = pure x
-    fromJustOrError msg Nothing = throwString msg
     --
     -- child loggers for various server threads
     srvlog :: Text -> m a -> m a

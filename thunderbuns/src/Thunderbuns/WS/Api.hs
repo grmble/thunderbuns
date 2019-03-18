@@ -6,7 +6,7 @@ module Thunderbuns.WS.Api
   , sendGuardedTextData
   , sendGuardedPing
   , sendResponse
-  , makeResponse
+  , makeResponses
   , responseFromMessage
   ) where
 
@@ -15,7 +15,9 @@ import qualified Data.Aeson as A
 import qualified Data.ByteString as B
 import Data.ByteString.D64.UUID (OrderedUUID, orderedUUID)
 import qualified Data.ByteString.Lazy as L
+import Data.Foldable (fold)
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Traversable (for)
 import Data.UUID.V1 (nextUUID)
 import Network.WebSockets (Connection, sendPing, sendTextData)
 import System.Log.Bunyan.LogText (toText)
@@ -28,6 +30,9 @@ import UnliftIO (MonadUnliftIO(..))
 import UnliftIO.Exception (bracket_)
 import UnliftIO.MVar (MVar, newMVar, putMVar, takeMVar)
 
+-- | A connection to a websocket client
+--
+-- It's guarded by an mvar to synchronize access
 data GuardedConnection = GuardedConnection
   { conn :: Connection
   , mvar :: MVar ()
@@ -54,15 +59,23 @@ sendResponse gc response = do
   logTrace ("subscription message to websocket: " <> toText (A.encode response))
   sendGuardedTextData gc (A.encode response)
 
--- | Make a Websocket response from an IRC Message
-makeResponse :: MonadIO m => I.Message -> m W.Response
-makeResponse msg = do
-  uuid <- orderedUUID . fromJust <$> liftIO nextUUID
-  pure $ responseFromMessage uuid msg
+-- | Make Websocket responses from a irc messages
+makeResponses :: MonadIO m => [I.Message] -> m [W.Response]
+makeResponses msgs =
+  (compress . fold) <$>
+                (for msgs $ \msg -> do
+                    uuid <- orderedUUID . fromJust <$> liftIO nextUUID
+                    pure $ responseFromMessage uuid msg)
+  where
+    compress (ms, []) = [W.GenericMessages ms]
+    compress ([], ms) = [W.ChannelMessages ms]
+    compress (gs, cs) = [W.GenericMessages gs, W.ChannelMessages cs]
 
-responseFromMessage :: OrderedUUID -> I.Message -> W.Response
+
+responseFromMessage ::
+     OrderedUUID -> I.Message -> ([W.GenericMessage], [W.ChannelMessage])
 responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
-  fromMaybe (W.GenericMessage uuid (toText $ I.printMessage m)) $ do
+  fromMaybe ([W.GenericMessage uuid (toText $ I.printMessage m)], []) $ do
     from <- maybe Nothing W.runParseFrom (toText <$> msgPrefix)
     cmd <-
       case msgCmd of
@@ -71,7 +84,10 @@ responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
         _ -> Nothing
     channels <- validChannels
     let msg = toText $ B.intercalate " " $ tail msgArgs
-    pure W.ChannelMessage {uuid, from, channels, cmd, msg}
+    pure $
+      ( []
+      , ((\x -> W.ChannelMessage {uuid, from, channel = x, cmd, msg}) <$>
+         channels))
   where
     validChannelName :: B.ByteString -> Bool
     validChannelName bs = B.head bs `B.elem` "#&+!"

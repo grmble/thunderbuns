@@ -72,18 +72,9 @@ data Response
   -- ^ There was an error with request rqid
   | DecodeError { errorMsg :: !Text }
   -- ^ The request could not be decode, so we can't reply with a request id
-  | GenericMessage { uuid :: OrderedUUID
-                   , msg :: !Text }
-  -- ^ A generic message is anything from the IRC server
-  | ChannelMessage { uuid :: OrderedUUID
-                   , from :: !From
-                   , cmd :: !Text
-                   , channels :: ![Channel]
-                   , msg :: !Text }
-  -- ^ A channel message is something that should be
-  -- displayed in a channel.  It is from a humam
-  -- sender (i.e. a prefix :nick!user@host), and it is either
-  -- a PRIVMSG or NOTICE
+  | KnownChannels [Channel]
+  | GenericMessages [GenericMessage]
+  | ChannelMessages [ChannelMessage]
   deriving (Eq, Generic, Show)
 
 instance A.ToJSON Response where
@@ -99,23 +90,45 @@ instance A.ToJSON Response where
       [ "tag" .= ("DecodeError" :: Text)
       , "contents" .= object ["errorMsg" .= errorMsg]
       ]
-  toJSON GenericMessage {..} =
+  toJSON (KnownChannels cs) =
     object
-      [ "tag" .= ("GenericMessage" :: Text)
-      , "contents" .= object ["uuid" .= uuid, "msg" .= msg]
+      [ "tag" .= ("KnownChannels" :: Text)
+      , "contents" .= cs
       ]
-  toJSON ChannelMessage {..} =
+  toJSON (GenericMessages ms) =
     object
-      [ "tag" .= ("ChannelMessage" :: Text)
-      , "contents" .=
-        object
-          [ "uuid" .= uuid
-          , "from" .= from
-          , "cmd" .= cmd
-          , "channels" .= channels
-          , "msg" .= msg
-          ]
+      [ "tag" .= ("GenericMessages" :: Text)
+      , "contents" .= ms
       ]
+  toJSON (ChannelMessages ms) =
+    object
+      [ "tag" .= ("ChannelMessages" :: Text)
+      , "contents" .= ms
+      ]
+
+-- | A "generic" message from the server
+--
+-- i.e. one that is not a channel message
+data GenericMessage = GenericMessage
+  { uuid :: !OrderedUUID
+  , msg :: !Text
+  } deriving (Eq, Show, Generic)
+
+instance A.ToJSON GenericMessage
+
+-- | A channel message is something that should be
+-- displayed in a channel.  It is from a humam
+-- sender (i.e. a prefix :nick!user@host), and it is either
+-- a PRIVMSG or NOTICE
+data ChannelMessage = ChannelMessage
+  { uuid :: OrderedUUID
+  , from :: !From
+  , cmd :: !Text
+  , channel :: !Channel
+  , msg :: !Text
+  } deriving (Eq, Show, Generic)
+
+instance A.ToJSON ChannelMessage
 
 -- | A request id identifies a request on a websocket
 newtype RequestID =

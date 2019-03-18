@@ -16,6 +16,7 @@ import Control.Monad.Logger (defaultLogStr)
 import Control.Monad.Reader (ReaderT)
 import Data.ByteString.D64.UUID (OrderedUUID)
 import Data.Coerce (coerce)
+import Data.Maybe (fromJust)
 import Database.Persist
 import Database.Persist.Sql (connClose)
 import Database.Persist.Sqlite
@@ -28,11 +29,6 @@ import qualified Thunderbuns.Config as C
 import Thunderbuns.Persist.Gen
 import Thunderbuns.Tlude
 import qualified Thunderbuns.WS.Types as W
-  ( Channel(..)
-  , Response(..)
-  , fromToText
-  , runParseFrom
-  )
 import UnliftIO.MVar (modifyMVar, newMVar, takeMVar)
 
 openDatabase :: Bunyan r m => C.DatabaseConfig -> m C.DatabasePool
@@ -46,8 +42,9 @@ openDatabase C.DatabaseConfig {connectionURL, runMigrations} = do
     liftIO $ runReaderT (runMigration migrateAll) backend
   C.DatabasePool <$> newMVar backend
   where
-    bunyanLogFunc lg loc logsrc loglvl logstr =
+    bunyanLogFunc lg loc logsrc loglvl logstr
       -- XXX determine debug level from loglvl
+     =
       Bunyan.logDebug
         (toText $ fromLogStr $ defaultLogStr loc logsrc loglvl logstr)
         lg
@@ -67,7 +64,7 @@ withSqlBackend persistAction =
         (backend, ) <$> runReaderT persistAction backend
 
 selectChannelBefore ::
-     W.Channel -> Maybe OrderedUUID -> ReaderT SqlBackend IO [W.Response]
+     W.Channel -> Maybe OrderedUUID -> ReaderT SqlBackend IO W.Response
 selectChannelBefore channel before = do
   messages <-
     case before of
@@ -79,19 +76,24 @@ selectChannelBefore channel before = do
         selectList
           [MessageChannel ==. coerce channel, MessageUuid <. uuid]
           [LimitTo channelBeforeLimit, Desc MessageUuid]
-  pure $ foldMap (\(Entity _ x) -> messageToResponse x) messages
+  pure $ messagesToResponse ((\(Entity _ x) -> x) <$> messages)
   where
     channelBeforeLimit = 50
 
-messageToResponse :: Message -> [W.Response]
-messageToResponse (Message uuid from cmd channel msg) =
-  maybe
-    []
-    (\x -> [W.ChannelMessage uuid x cmd [coerce channel] msg])
-    (W.runParseFrom from)
+messagesToResponse :: [Message] -> W.Response
+messagesToResponse ms = W.ChannelMessages (mkChannelMessage <$> ms)
+  where
+    mkChannelMessage (Message uuid from cmd channel msg) =
+      W.ChannelMessage
+        uuid
+        (fromJust $ W.runParseFrom from)
+        cmd
+        (coerce channel)
+        msg
 
 responseToMessage :: W.Response -> [Message]
-responseToMessage W.ChannelMessage {..} =
-  flip fmap channels $ \channel ->
-    Message uuid (W.fromToText from) cmd (coerce channel) msg
+responseToMessage (W.ChannelMessages msgs) = go <$> msgs
+  where
+    go W.ChannelMessage {..} =
+      Message uuid (W.fromToText from) cmd (coerce channel) msg
 responseToMessage _ = []

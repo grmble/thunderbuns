@@ -42,6 +42,7 @@ dependencies:
 # - jose-jwt
 - lens  # it's pulled in by dhall (i think), we might as well use it
 - monad-logger # for persistent
+- monad-loops
 - mtl
 - optparse-applicative
 - persistent

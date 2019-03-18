@@ -44,18 +44,41 @@ data Response
   = Done { rqid :: RequestID }
   | GenericError { rqid :: RequestID, errorMsg :: String }
   | DecodeError { errorMsg :: String }
-  | GenericMessage { uuid :: String, msg :: String }
-  | ChannelMessage { uuid :: String
-                   , from :: From
-                   , cmd :: String
-                   , channels :: Array Channel
-                   , msg :: String }
+  | KnownChannels (Array Channel)
+  | GenericMessages (Array GenericMessage)
+  | ChannelMessages (Array ChannelMessage)
 
 derive instance genericResponse :: Generic Response _
 derive instance eqResponse :: Eq Response
 instance showResponse :: Show Response where show = genericShow
 instance decodeResponse :: Decode Response where decode = genericDecode interfaceOptions
 instance encodeResponse :: Encode Response where encode = genericEncode interfaceOptions
+
+newtype GenericMessage
+  = GenericMessage
+    { uuid :: String
+    , msg :: String
+    }
+derive instance genericGenericMessage :: Generic GenericMessage _
+derive instance eqGenericMessage :: Eq GenericMessage
+instance showGenericMessage :: Show GenericMessage where show = genericShow
+instance decodeGenericMessage :: Decode GenericMessage where decode = genericDecode interfaceOptions
+instance encodeGenericMessage :: Encode GenericMessage where encode = genericEncode interfaceOptions
+
+newtype ChannelMessage
+  = ChannelMessage
+    { uuid :: String
+    , from :: From
+    , cmd :: String
+    , channel :: Channel
+    , msg :: String
+    }
+
+derive instance genericChannelMessage :: Generic ChannelMessage _
+derive instance eqChannelMessage :: Eq ChannelMessage
+instance showChannelMessage :: Show ChannelMessage where show = genericShow
+instance decodeChannelMessage :: Decode ChannelMessage where decode = genericDecode interfaceOptions
+instance encodeChannelMessage :: Encode ChannelMessage where encode = genericEncode interfaceOptions
 
 
 -- | A request id identifies a request

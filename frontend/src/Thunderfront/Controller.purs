@@ -9,7 +9,7 @@ import Bonsai.Forms.Model (updatePlain)
 import Bonsai.Types (delayUntilRendered)
 import Control.Monad.State (State, runState)
 import Control.Monad.Writer (WriterT, execWriterT, tell)
-import Control.Plus (empty)
+import Control.Plus ((<|>), empty)
 import Data.Foldable (for_)
 import Data.Lens (assign, modifying, over, set, use)
 import Data.Map as M
@@ -76,14 +76,20 @@ updateResponse (WS.DecodeError {errorMsg}) = do
    -- so we reset them all
    assign activeRequests S.empty
    error errorMsg "Error from Backend"
-updateResponse (WS.GenericMessage {uuid, msg}) = do
-  modifying messages (M.insert uuid msg)
+updateResponse (WS.KnownChannels channels) =
+  for_ channels $ \channel ->
+    modifying channelMessages $ \cm ->
+      M.alter (\mm -> mm <|> Just M.empty) channel cm
+
+updateResponse (WS.GenericMessages ms) = do
+  for_ ms $ \(WS.GenericMessage {uuid, msg}) ->
+    modifying messages (M.insert uuid msg)
   scrollMessagesIfAtEnd
-updateResponse (WS.ChannelMessage {uuid, from, cmd, channels, msg}) = do
-  let WS.From {nick} = from
-  for_ channels $ \channel -> do
+updateResponse (WS.ChannelMessages ms) = do
+  for_ ms $ \(WS.ChannelMessage {uuid, from, cmd, channel, msg}) -> do
+    let WS.From {nick} = from
     let nm = NickAndMsg { uuid, nick, msg }
-    modifying (channelMessages) $ \cm ->
+    modifying channelMessages $ \cm ->
       M.alter (\mm -> Just (maybe (M.singleton uuid nm) (M.insert uuid nm) mm)) channel cm
   scrollMessagesIfAtEnd
 
