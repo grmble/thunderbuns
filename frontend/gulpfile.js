@@ -115,7 +115,7 @@ function reload(done) {
 }
 
 function runProxy(done) {
-  browserSync.init({proxy: 'http://localhost:1337/',
+  browserSync.init({proxy: 'http://localhost:1337/tb/',
                     startPath: 'index.html',
                     reloadOnRestart: true
                    });

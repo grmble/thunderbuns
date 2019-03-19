@@ -12,6 +12,7 @@ import Control.Monad.Writer (WriterT, execWriterT, tell)
 import Control.Plus ((<|>), empty)
 import Data.Foldable (for_)
 import Data.Lens (assign, modifying, over, set, use)
+import Data.Lens.At (at)
 import Data.Map as M
 import Data.Maybe (Maybe(..), maybe)
 import Data.Set as S
@@ -44,6 +45,7 @@ update (ActiveChannelMsg x) =
   ws <- use webSocket
   for_ (Tuple <$> ws <*> x) $ \(Tuple ws' chan) ->
     sendRequest ws' (WS.GetChannelMessages {channel: chan, before: Nothing})
+update LoadOlderMsg = runM $ updateLoadOlder
 update (RequestMsg x) = runM $ updateRequest x
 update (ResponseMsg x) = runM $ updateResponse x
 
@@ -64,6 +66,15 @@ updateRequest req = do
       sendRequest ws' req
       -- also: reset the input box ...
       tell $ pure (MessageInputMsg "")
+
+updateLoadOlder :: M Unit
+updateLoadOlder = do
+  ws <- use webSocket
+  case ws of
+    Nothing -> error "Can not send message to the backend" "Websocket not connected"
+    Just ws' -> do
+      channel <- use activeChannel
+      maybe (pure unit) (sendLoadOlder ws') channel
 
 updateResponse :: WS.Response -> M Unit
 updateResponse (WS.Done {rqid})= markDone rqid
@@ -106,6 +117,17 @@ sendRequest ws req = do
   modifying activeRequests $ S.insert rqid
   tell $ emittingTask $ \ctx -> do
     liftEffect $ send (WS.encodeForSend (WS.RequestWithID { rqid: rqid, rq: req })) ws
+
+sendLoadOlder :: WebSocket -> WS.Channel -> M Unit
+sendLoadOlder ws channel = do
+  modifying maxRequestID' $ \x -> x + 1
+  rqid <- use maxRequestID
+  modifying activeRequests $ S.insert rqid
+  cm <- use (channelMessages <<< at channel)
+  let oldest = cm >>= M.findMin >>= (pure <<< _.key)
+  let req = WS.GetChannelMessages { channel, before: oldest }
+  tell $ emittingTask $ \ctx -> do
+    liftEffect $ send (WS.encodeForSend (WS.RequestWithID { rqid: rqid, rq: req})) ws
 
 scrollMessagesIfAtEnd :: M Unit
 scrollMessagesIfAtEnd =

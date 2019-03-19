@@ -22,17 +22,19 @@ import Thunderfront.Types.WS as WS
 -- | * LoginFormMsg: Form handling messages for the login form
 -- | * CurrentViewMsg: Handles the state for view switching
 -- | * ActiveChannelMsg: Switches the active channel
--- | * ResponseMsg: incoming responses from the websocket
+-- | * LoadOlderMsg: Load older messages if possible
 -- | * RequestMsg: outgoing requests to the websocket.
 -- |   The view code can not update the model, but a request id
 -- |   has to be generated.  The view code emits a request msg,
 -- |   and the update function generates the id and sends the request out.
+  -- | * ResponseMsg: incoming responses from the websocket
 data Msg
   = WebSocketMsg (Maybe WebSocket)
   | MessageInputMsg String
   | LoginFormMsg FormMsg
   | CurrentViewMsg MT.CurrentView
   | ActiveChannelMsg (Maybe WS.Channel)
+  | LoadOlderMsg
   | RequestMsg WS.Request
   | ResponseMsg WS.Response
 
@@ -43,6 +45,7 @@ msgShow (LoginFormMsg _) = "LoginFormMsg"
 msgShow (MessageInputMsg x) = "MessageInputMsg (" <> show x <> ")"
 msgShow (CurrentViewMsg x) = "CurrentViewMsg (" <> show x <> ")"
 msgShow (ActiveChannelMsg x) = "ActiveChannelMsg (" <> show x <> ")"
+msgShow LoadOlderMsg = "LoadOlderMsg"
 msgShow (RequestMsg x) = "RequestMsg (" <> show x <> ")"
 msgShow (ResponseMsg x) = "ResponseMsg (" <> show x <> ")"
 

@@ -38,5 +38,5 @@ main = do
     dbgProgram =
       debugProgram (noDebug
         { timing = true
-        , events = true
+        -- , events = true
         })

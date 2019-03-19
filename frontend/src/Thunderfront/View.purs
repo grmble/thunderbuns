@@ -4,7 +4,7 @@ import Prelude
 
 import Bonsai (Cmd)
 import Bonsai.EventHandlers (enterEscapeKey)
-import Bonsai.Html (Markup, VNode, a, div_, input, li, mapMarkup, nav, render, span, text, ul, (!))
+import Bonsai.Html (Markup, VNode, a, button, div_, dl, dd, dt, input, li, mapMarkup, nav, render, span, text, ul, (!))
 import Bonsai.Html.Attributes (cls, id_, href, typ, value)
 import Bonsai.Html.Events (onClickPreventDefault, onInput, onKeyEnter)
 import Control.Plus (empty)
@@ -13,7 +13,7 @@ import Data.Foldable (for_)
 import Data.Lens (view)
 import Data.Lens.Index (ix)
 import Data.Map as M
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (unwrap)
 import Foreign (Foreign, F)
 import Thunderfront.Forms.Login (loginForm)
@@ -82,8 +82,11 @@ viewChannels model = do
 viewActiveChannel :: Model -> Markup Msg
 viewActiveChannel model =
   div_ ! id_ "content" ! cls "l-box pure-u-2-3 pure-u-md-5-6" $ do
-    ul ! id_ "messages"
-      ! cls "l-plainlist l-stretch" $
+    dl ! id_ "messages"
+      ! cls "l-stretch" $ do
+      when (isJust $ view activeChannel model) $
+        button ! id_ "loadOlder" ! cls "pure-button"
+          ! onClickPreventDefault LoadOlderMsg $ text "Load older"
       viewChannel (view activeChannel model)
     div_ ! cls "pure-form" $
       input ! id_ "msgInput"
@@ -96,11 +99,9 @@ viewActiveChannel model =
     viewChannel Nothing =
       for_ (view messages model) $ li <<< text
     viewChannel (Just channel) =
-      for_ (view (channelMessages <<< ix channel) model) $ \(NickAndMsg{nick, msg}) ->
-        li $ do
-          span ! cls "l-user" $ text (unwrap nick)
-          text ":"
-          span $ text msg
+      for_ (view (channelMessages <<< ix channel) model) $ \(NickAndMsg{uuid, nick, msg}) -> do
+        dt $ text (unwrap nick)
+        dd ! id_ uuid $ text msg
 
 -- | Event handler for enter key. XXX PROMOTE
 rawEnterKeyHandler :: forall msg. (String -> F (Cmd msg)) -> Foreign -> F (Cmd msg)
