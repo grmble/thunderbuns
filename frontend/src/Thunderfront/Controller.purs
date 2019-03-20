@@ -14,11 +14,11 @@ import Data.Foldable (for_)
 import Data.Lens (assign, modifying, over, set, use)
 import Data.Lens.At (at)
 import Data.Map as M
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set as S
 import Data.Tuple (Tuple(..))
 import Effect.Class (liftEffect)
-import Thunderfront.Scroll (isScrolledToBottom, scrollToBottom)
+import Thunderfront.Scroll (isScrolledToBottom, isScrolledToTop, scrollIntoViewTop, scrollToBottom)
 import Thunderfront.Types.Model (Model, NickAndMsg(..), activeChannel, activeRequests, channelMessages, currentView, inputModel, loginFormModel, maxRequestID, maxRequestID', messages, webSocket)
 import Thunderfront.Types.Msg (Msg(..))
 import Thunderfront.Types.WS as WS
@@ -81,6 +81,7 @@ updateResponse (WS.Done {rqid})= markDone rqid
 updateResponse (WS.GenericError {rqid, errorMsg}) = do
   markDone rqid
   error errorMsg "Error from Backend"
+
 updateResponse (WS.DecodeError {errorMsg}) = do
    -- we sent a request that could not be parsed
    -- we don't get the id in the error
@@ -95,14 +96,16 @@ updateResponse (WS.KnownChannels channels) =
 updateResponse (WS.GenericMessages ms) = do
   for_ ms $ \(WS.GenericMessage {uuid, msg}) ->
     modifying messages (M.insert uuid msg)
-  scrollMessagesIfAtEnd
+  scrollMessagesAfterUpdate Nothing
+
 updateResponse (WS.ChannelMessages ms) = do
+  oldest <- use activeChannel >>= maybe (pure Nothing) oldestMessageUUID
   for_ ms $ \(WS.ChannelMessage {uuid, from, cmd, channel, msg}) -> do
     let WS.From {nick} = from
     let nm = NickAndMsg { uuid, nick, msg }
     modifying channelMessages $ \cm ->
       M.alter (\mm -> Just (maybe (M.singleton uuid nm) (M.insert uuid nm) mm)) channel cm
-  scrollMessagesIfAtEnd
+  scrollMessagesAfterUpdate oldest
 
 markDone :: WS.RequestID -> M Unit
 markDone rqid = modifying activeRequests $ S.delete rqid
@@ -118,25 +121,36 @@ sendRequest ws req = do
   tell $ emittingTask $ \ctx -> do
     liftEffect $ send (WS.encodeForSend (WS.RequestWithID { rqid: rqid, rq: req })) ws
 
+oldestMessageUUID :: WS.Channel -> M (Maybe String)
+oldestMessageUUID channel = do
+  cm <- use (channelMessages <<< at channel)
+  pure (cm >>= (map _.key <<< M.findMin))
+
 sendLoadOlder :: WebSocket -> WS.Channel -> M Unit
 sendLoadOlder ws channel = do
   modifying maxRequestID' $ \x -> x + 1
   rqid <- use maxRequestID
   modifying activeRequests $ S.insert rqid
-  cm <- use (channelMessages <<< at channel)
-  let oldest = cm >>= M.findMin >>= (pure <<< _.key)
+  oldest <- oldestMessageUUID channel
   let req = WS.GetChannelMessages { channel, before: oldest }
   tell $ emittingTask $ \ctx -> do
     liftEffect $ send (WS.encodeForSend (WS.RequestWithID { rqid: rqid, rq: req})) ws
 
-scrollMessagesIfAtEnd :: M Unit
-scrollMessagesIfAtEnd =
+scrollMessagesAfterUpdate :: Maybe String -> M Unit
+scrollMessagesAfterUpdate formerOldest =
   tell $ emittingTask \ctx -> do
     elem <- affF $ elementById (ElementId "messages") ctx.document
+    atStart <- affF $ isScrolledToTop elem
     atEnd <- affF $ isScrolledToBottom elem
     when atEnd $ do
       delayUntilRendered ctx
       affF $ scrollToBottom elem
+    when atStart $ do
+      case formerOldest of
+        Nothing -> pure unit
+        Just oldestUUID -> do
+          delayUntilRendered ctx
+          affF (elementById (ElementId oldestUUID) ctx.document >>= scrollIntoViewTop true)
 
 scrollMessages :: M Unit
 scrollMessages =
