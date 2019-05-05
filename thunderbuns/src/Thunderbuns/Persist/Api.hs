@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 {- | Persist Api
 
@@ -14,7 +14,7 @@ module Thunderbuns.Persist.Api where
 
 import Control.Monad.Logger (defaultLogStr)
 import Control.Monad.Reader (ReaderT)
-import Data.ByteString.D64.UUID (OrderedUUID)
+import Data.ByteString.D64.UUID (OrderedUUID, timestamp)
 import Data.Coerce (coerce)
 import Data.Maybe (fromJust)
 import Database.Persist
@@ -90,10 +90,11 @@ messagesToResponse ms = W.ChannelMessages (mkChannelMessage <$> ms)
         cmd
         (coerce channel)
         msg
+        (timestamp uuid)
 
 responseToMessage :: W.Response -> [Message]
 responseToMessage (W.ChannelMessages msgs) = go <$> msgs
   where
-    go W.ChannelMessage {..} =
+    go W.ChannelMessage {W.uuid, W.from, W.cmd, W.channel, W.msg} =
       Message uuid (W.fromToText from) cmd (coerce channel) msg
 responseToMessage _ = []

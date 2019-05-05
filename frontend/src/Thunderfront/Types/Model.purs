@@ -15,6 +15,7 @@ import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
+import Data.Tuple (Tuple)
 import Thunderfront.WebSocket (WebSocket)
 import Thunderfront.Types.WS as WS
 
@@ -44,7 +45,7 @@ newtype Model =
 
   , activeChannel :: Maybe WS.Channel
   , channelMessages :: M.Map WS.Channel (M.Map String NickAndMsg)
-  , messages :: M.Map String String
+  , messages :: M.Map String (Tuple String String)
 
   , formModels :: FormModels
   , currentView :: CurrentView
@@ -67,7 +68,12 @@ derive instance genericModel :: Generic Model _
 instance showModel :: Show Model where show = genericShow
 
 -- | Helper for record with nick and msg
-newtype NickAndMsg = NickAndMsg { uuid :: String, nick :: WS.Nick, msg :: String }
+newtype NickAndMsg =
+  NickAndMsg { uuid :: String
+             , nick :: WS.Nick
+             , msg :: String
+             , timestamp :: String
+             }
 derive instance newtypeNickAndMsg :: Newtype NickAndMsg _
 derive instance genericNickAndMsg :: Generic NickAndMsg _
 instance showNickAndMsg :: Show NickAndMsg where show = genericShow
@@ -91,7 +97,7 @@ activeChannel = _Newtype <<< prop (SProxy :: SProxy "activeChannel")
 channelMessages :: Lens' Model (M.Map WS.Channel (M.Map String NickAndMsg))
 channelMessages = _Newtype <<< prop (SProxy :: SProxy "channelMessages")
 
-messages :: Lens' Model (M.Map String String)
+messages :: Lens' Model (M.Map String (Tuple String String))
 messages = _Newtype <<< prop (SProxy :: SProxy "messages")
 
 activeRequests :: Lens' Model (S.Set WS.RequestID)

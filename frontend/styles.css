@@ -81,3 +81,10 @@ dd {
     margin: 0 0 0 100px;
     padding: 0 0 0.5em 10px;
 }
+
+.timestamp::before {
+    content: " --";
+}
+.timestamp {
+    color: lightgrey;
+}

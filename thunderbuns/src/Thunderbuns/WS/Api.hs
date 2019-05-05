@@ -13,7 +13,7 @@ module Thunderbuns.WS.Api
 import Control.Monad.Except
 import qualified Data.Aeson as A
 import qualified Data.ByteString as B
-import Data.ByteString.D64.UUID (OrderedUUID, orderedUUID)
+import Data.ByteString.D64.UUID (OrderedUUID, orderedUUID, timestamp)
 import qualified Data.ByteString.Lazy as L
 import Data.Foldable (fold)
 import Data.Maybe (fromJust, fromMaybe)
@@ -63,19 +63,19 @@ sendResponse gc response = do
 makeResponses :: MonadIO m => [I.Message] -> m [W.Response]
 makeResponses msgs =
   (compress . fold) <$>
-                (for msgs $ \msg -> do
-                    uuid <- orderedUUID . fromJust <$> liftIO nextUUID
-                    pure $ responseFromMessage uuid msg)
+  (for msgs $ \msg -> do
+     uuid <- orderedUUID . fromJust <$> liftIO nextUUID
+     pure $ responseFromMessage uuid msg)
   where
     compress (ms, []) = [W.GenericMessages ms]
     compress ([], ms) = [W.ChannelMessages ms]
     compress (gs, cs) = [W.GenericMessages gs, W.ChannelMessages cs]
 
-
 responseFromMessage ::
      OrderedUUID -> I.Message -> ([W.GenericMessage], [W.ChannelMessage])
 responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
-  fromMaybe ([W.GenericMessage uuid (toText $ I.printMessage m)], []) $ do
+  fromMaybe
+    ([W.GenericMessage uuid (toText $ I.printMessage m) (timestamp uuid)], []) $ do
     from <- maybe Nothing W.runParseFrom (toText <$> msgPrefix)
     cmd <-
       case msgCmd of
@@ -84,10 +84,12 @@ responseFromMessage uuid m@I.Message {msgPrefix, msgCmd, msgArgs} =
         _ -> Nothing
     channels <- validChannels
     let msg = toText $ B.intercalate " " $ tail msgArgs
-    pure $
+    pure
       ( []
-      , ((\x -> W.ChannelMessage {uuid, from, channel = x, cmd, msg}) <$>
-         channels))
+      , (\x ->
+           W.ChannelMessage
+             {uuid, from, channel = x, cmd, msg, timestamp = timestamp uuid}) <$>
+        channels)
   where
     validChannelName :: B.ByteString -> Bool
     validChannelName bs = B.head bs `B.elem` "#&+!"

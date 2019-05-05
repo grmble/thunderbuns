@@ -14,7 +14,7 @@ import Data.Foldable (for_)
 import Data.Lens (assign, modifying, over, set, use)
 import Data.Lens.At (at)
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Set as S
 import Data.Tuple (Tuple(..))
 import Effect.Class (liftEffect)
@@ -49,6 +49,7 @@ update LoadOlderMsg = runM $ updateLoadOlder
 update (RequestMsg x) = runM $ updateRequest x
 update (ResponseMsg x) = runM $ updateResponse x
 
+
 updateWebSocket :: Maybe WebSocket -> M Unit
 updateWebSocket Nothing = do
   ws <- use webSocket
@@ -57,24 +58,28 @@ updateWebSocket Nothing = do
 updateWebSocket (Just ws) = do
   assign webSocket (Just ws)
 
+
 updateRequest :: WS.Request -> M Unit
-updateRequest req = do
-  ws <- use webSocket
-  case ws of
-    Nothing -> error "Can not send message to the backend" "Websocket not connected"
-    Just ws' -> do
-      sendRequest ws' req
+updateRequest req =
+  use webSocket >>=
+  maybe (error "Can not send message to the backend" "Websocket not connected") updateRequest'
+
+  where
+
+    updateRequest' ws = do
+      sendRequest ws req
       -- also: reset the input box ...
       tell $ pure (MessageInputMsg "")
 
 updateLoadOlder :: M Unit
-updateLoadOlder = do
-  ws <- use webSocket
-  case ws of
-    Nothing -> error "Can not send message to the backend" "Websocket not connected"
-    Just ws' -> do
-      channel <- use activeChannel
-      maybe (pure unit) (sendLoadOlder ws') channel
+updateLoadOlder =
+  use webSocket >>=
+  maybe (error "Can not send message to the backend" "Websocket not connected") updateLoadOlder'
+
+  where
+
+    updateLoadOlder' ws =
+      use activeChannel >>= maybe (pure unit) (sendLoadOlder ws)
 
 updateResponse :: WS.Response -> M Unit
 updateResponse (WS.Done {rqid})= markDone rqid
@@ -94,15 +99,15 @@ updateResponse (WS.KnownChannels channels) =
       M.alter (\mm -> mm <|> Just M.empty) channel cm
 
 updateResponse (WS.GenericMessages ms) = do
-  for_ ms $ \(WS.GenericMessage {uuid, msg}) ->
-    modifying messages (M.insert uuid msg)
+  for_ ms $ \(WS.GenericMessage {uuid, msg, timestamp}) ->
+    modifying messages (M.insert uuid (Tuple msg timestamp))
   scrollMessagesAfterUpdate Nothing
 
 updateResponse (WS.ChannelMessages ms) = do
   oldest <- use activeChannel >>= maybe (pure Nothing) oldestMessageUUID
-  for_ ms $ \(WS.ChannelMessage {uuid, from, cmd, channel, msg}) -> do
+  for_ ms $ \(WS.ChannelMessage {uuid, from, cmd, channel, msg, timestamp}) -> do
     let WS.From {nick} = from
-    let nm = NickAndMsg { uuid, nick, msg }
+    let nm = NickAndMsg { uuid, nick, msg, timestamp }
     modifying channelMessages $ \cm ->
       M.alter (\mm -> Just (maybe (M.singleton uuid nm) (M.insert uuid nm) mm)) channel cm
   scrollMessagesAfterUpdate oldest

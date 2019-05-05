@@ -58,6 +58,7 @@ newtype GenericMessage
   = GenericMessage
     { uuid :: String
     , msg :: String
+    , timestamp :: String
     }
 derive instance genericGenericMessage :: Generic GenericMessage _
 derive instance eqGenericMessage :: Eq GenericMessage
@@ -72,6 +73,7 @@ newtype ChannelMessage
     , cmd :: String
     , channel :: Channel
     , msg :: String
+    , timestamp :: String
     }
 
 derive instance genericChannelMessage :: Generic ChannelMessage _

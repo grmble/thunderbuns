@@ -15,6 +15,7 @@ import Data.Coerce (coerce)
 import Data.Hashable (Hashable)
 import qualified Data.Scientific as SC
 import qualified Data.Text as T
+import Data.Time (UTCTime)
 import Thunderbuns.Tlude
 
 -- | Request defines anything that can be received from the frontend
@@ -91,20 +92,11 @@ instance A.ToJSON Response where
       , "contents" .= object ["errorMsg" .= errorMsg]
       ]
   toJSON (KnownChannels cs) =
-    object
-      [ "tag" .= ("KnownChannels" :: Text)
-      , "contents" .= cs
-      ]
+    object ["tag" .= ("KnownChannels" :: Text), "contents" .= cs]
   toJSON (GenericMessages ms) =
-    object
-      [ "tag" .= ("GenericMessages" :: Text)
-      , "contents" .= ms
-      ]
+    object ["tag" .= ("GenericMessages" :: Text), "contents" .= ms]
   toJSON (ChannelMessages ms) =
-    object
-      [ "tag" .= ("ChannelMessages" :: Text)
-      , "contents" .= ms
-      ]
+    object ["tag" .= ("ChannelMessages" :: Text), "contents" .= ms]
 
 -- | A "generic" message from the server
 --
@@ -112,6 +104,7 @@ instance A.ToJSON Response where
 data GenericMessage = GenericMessage
   { uuid :: !OrderedUUID
   , msg :: !Text
+  , timestamp :: !UTCTime
   } deriving (Eq, Show, Generic)
 
 instance A.ToJSON GenericMessage
@@ -126,6 +119,7 @@ data ChannelMessage = ChannelMessage
   , cmd :: !Text
   , channel :: !Channel
   , msg :: !Text
+  , timestamp :: !UTCTime
   } deriving (Eq, Show, Generic)
 
 instance A.ToJSON ChannelMessage

@@ -15,6 +15,7 @@ import Data.Lens.Index (ix)
 import Data.Map as M
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (unwrap)
+import Data.Tuple (Tuple(..))
 import Foreign (Foreign, F)
 import Thunderfront.Forms.Login (loginForm)
 import Thunderfront.Types.Model (CurrentView(..), Model, NickAndMsg(..), activeChannel, channelMessages, channelName, currentView, inputModel, messages)
@@ -97,11 +98,22 @@ viewActiveChannel model =
         ! onKeyEnter (\s -> RequestMsg $ (WS.GenericCommand { cmd: s }))
   where
     viewChannel Nothing =
-      for_ (view messages model) $ li <<< text
+      for_ (view messages model) $ \(Tuple msg timestamp) ->
+        li $ span $ do
+          text msg
+          span ! cls "timestamp" $ text (displayTimestamp timestamp)
     viewChannel (Just channel) =
-      for_ (view (channelMessages <<< ix channel) model) $ \(NickAndMsg{uuid, nick, msg}) -> do
+      for_
+        (view (channelMessages <<< ix channel) model)
+        $ \(NickAndMsg{uuid, nick, msg, timestamp}) -> do
         dt $ text (unwrap nick)
-        dd ! id_ uuid $ text msg
+        dd ! id_ uuid $
+          span $ do
+            text msg
+            span ! cls "timestamp" $ text (displayTimestamp timestamp)
+
+foreign import displayTimestamp :: String -> String
+
 
 -- | Event handler for enter key. XXX PROMOTE
 rawEnterKeyHandler :: forall msg. (String -> F (Cmd msg)) -> Foreign -> F (Cmd msg)
